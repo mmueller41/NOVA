@@ -70,6 +70,9 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         Sm *         xcpu_sm;
         Pt *         pt_oom;
 
+        uint64      tsc  { 0 };
+        uint64      time { 0 };
+
         REGPARM (1)
         static void handle_exc (Exc_regs *) asm ("exc_handler");
 
@@ -225,9 +228,9 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         ~Ec();
 
         ALWAYS_INLINE
-        inline void add_tsc_offset (uint64 tsc)
+        inline void add_tsc_offset (uint64 const t)
         {
-            regs.add_tsc_offset (tsc);
+            regs.add_tsc_offset (t);
         }
 
         ALWAYS_INLINE
@@ -272,7 +275,13 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
                 Cpu::hazard &= ~HZD_FPU;
             }
 
+            uint64 const t = rdtsc();
+
+            current->time += t - current->tsc;
+
             current = this;
+
+            current->tsc = t;
 
             bool ok = current->add_ref();
             assert (ok);
