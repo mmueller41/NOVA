@@ -197,6 +197,12 @@ class Sys_ec_ctrl : public Sys_regs
 
         ALWAYS_INLINE
         inline Crd crd() const { return Crd (ARG_3); }
+
+        inline void set_time (uint64 val)
+        {
+            ARG_2 = static_cast<mword>(val >> 32);
+            ARG_3 = static_cast<mword>(val);
+        }
 };
 
 class Sys_sc_ctrl : public Sys_regs
