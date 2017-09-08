@@ -97,6 +97,7 @@ class Sc : public Kobject, public Refcount
         static unsigned ctr_loop    CPULOCAL;
         static uint64   cross_time[NUM_CPU];
         static uint64   killed_time[NUM_CPU];
+        static uint64   rcu_time[NUM_CPU];
 
         static unsigned const default_prio = 1;
         static unsigned const default_quantum = 10000;
