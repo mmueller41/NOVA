@@ -167,7 +167,7 @@ void Lapic::timer_handler()
     if (expired)
         Timeout::check();
 
-    Rcu::update();
+    Ec::current->update_rcu();
 }
 
 void Lapic::lvt_vector (unsigned vector)
