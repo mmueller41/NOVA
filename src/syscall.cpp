@@ -777,6 +777,8 @@ void Ec::sys_sc_ctrl()
             sc_time = Sc::killed_time[sc->cpu];
         else if (r->op() == 3)
             sc_time = Ec::killed_time[sc->cpu];
+        else if (r->op() == 4)
+            sc_time = Sc::rcu_time[sc->cpu];
         else
             sys_finish<Sys_regs::BAD_PAR>();
     } else
