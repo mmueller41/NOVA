@@ -73,6 +73,9 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         uint64      tsc  { 0 };
         uint64      time { 0 };
+        uint64      time_m { 0 };
+
+        static uint64 killed_time[NUM_CPU];
 
         REGPARM (1)
         static void handle_exc (Exc_regs *) asm ("exc_handler");
@@ -493,4 +496,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static void check(mword, bool = true);
 
         bool migrate(Capability &, Ec *, Sys_ec_ctrl const &);
+
+        ALWAYS_INLINE
+        void inline measured() { time_m = time; }
 };

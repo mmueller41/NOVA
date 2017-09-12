@@ -845,6 +845,7 @@ void Ec::sys_ec_ctrl()
 
             uint32 dummy;
             r->set_time (div64 (ec->time * 1000, Lapic::freq_tsc, &dummy));
+            ec->measured();
             break;
         }
 
@@ -876,6 +877,8 @@ void Ec::sys_sc_ctrl()
             sc_time = Sc::cross_time[sc->cpu];
         else if (r->op() == 2)
             sc_time = Sc::killed_time[sc->cpu];
+        else if (r->op() == 3)
+            sc_time = Ec::killed_time[sc->cpu];
         else
             sys_finish<Sys_regs::BAD_PAR>();
     } else
