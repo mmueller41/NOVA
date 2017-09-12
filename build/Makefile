@@ -75,7 +75,7 @@ WFLAGS		:= -Wall -Wextra -Waggregate-return -Wcast-align -Wcast-qual -Wconversio
 WFLAGS		+= -Wctor-dtor-privacy -Wno-non-virtual-dtor -Wold-style-cast -Woverloaded-virtual -Wsign-promo
 WFLAGS		+= -Weffc++
 ifeq ($(ARCH),x86_32)
-WFLAGS		+= $(call check,-Wframe-larger-than=96)
+WFLAGS		+= $(call check,-Wframe-larger-than=100)
 else
 WFLAGS		+= $(call check,-Wframe-larger-than=240)
 endif
