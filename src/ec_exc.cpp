@@ -44,8 +44,10 @@ void Ec::save_fpu()
     if (!Cmdline::fpu_eager && !utcb)
         regs.fpu_ctrl (false);
 
-    if (EXPECT_FALSE (!fpu))
+    if (EXPECT_FALSE (!fpu)) {
         fpu = new (pd->quota) Fpu;
+        Atomic::add(Counter::ec_fpu, 1U);
+    }
 
     fpu->save();
 }
@@ -80,6 +82,8 @@ void Ec::handle_exc_nm()
 {
     if (Cmdline::fpu_eager)
         die ("FPU fault");
+
+    Atomic::add(Counter::fpu_nm, 1ULL);
 
     Fpu::enable();
 

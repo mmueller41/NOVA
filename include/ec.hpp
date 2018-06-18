@@ -271,7 +271,11 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
                 }
 
                 Cpu::hazard &= ~HZD_FPU;
+
+                Atomic::add(Counter::fpu_nm, 1ULL);
             }
+
+            Atomic::add(Counter::switch_ec, 1ULL);
 
             current = this;
 

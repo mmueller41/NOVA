@@ -42,15 +42,20 @@ Ec::Ec (Pd *own, void (*f)(), unsigned c) : Kobject (EC, static_cast<Space_obj *
 {
     trace (TRACE_SYSCALL, "EC:%p created (PD:%p Kernel)", this, own);
 
+    Atomic::add(Counter::ecs, 1U);
+
     regs.vtlb = nullptr;
     regs.vmcs = nullptr;
     regs.vmcb = nullptr;
+
 }
 
 Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, mword s, Pt *oom) : Kobject (EC, static_cast<Space_obj *>(own), sel, 0xd, free, pre_free), cont (f), pd (p), partner (nullptr), prev (nullptr), next (nullptr), fpu (nullptr), cpu (static_cast<uint16>(c)), glb (!!f), evt (e), timeout (this), user_utcb (u), xcpu_sm (nullptr), pt_oom (oom)
 {
     // Make sure we have a PTAB for this CPU in the PD
     pd->Space_mem::init (pd->quota, c);
+
+    Atomic::add(Counter::ecs, 1U);
 
     regs.vtlb = nullptr;
     regs.vmcs = nullptr;
@@ -136,6 +141,8 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, stati
     // Make sure we have a PTAB for this CPU in the PD
     pd->Space_mem::init (pd->quota, c);
 
+    Atomic::add(Counter::ecs, 1U);
+
     regs.vtlb = nullptr;
     regs.vmcs = nullptr;
     regs.vmcb = nullptr;
@@ -147,6 +154,8 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, stati
 //De-constructor
 Ec::~Ec()
 {
+    Atomic::sub(Counter::ecs, 1U);
+
     if (xcpu_sm) {
         Sm::destroy(xcpu_sm, pd->quota);
         xcpu_sm = nullptr;
@@ -157,8 +166,10 @@ Ec::~Ec()
     if (pt_oom && pt_oom->del_ref())
         Pt::destroy(pt_oom, pd->quota);
 
-    if (fpu)
+    if (fpu) {
         Fpu::destroy(fpu, pd->quota);
+        Atomic::sub(Counter::ec_fpu, 1U);
+    }
 
     if (utcb) {
         Utcb::destroy(utcb, pd->quota);
@@ -444,6 +455,9 @@ void Ec::root_invoke()
     /* LazyFP vulnerability - a never ending story Intel ? */
     if (Cpu::vendor == Cpu::Vendor::INTEL)
         Cmdline::fpu_eager = true;
+
+    if (Cmdline::fpu_lazy)
+        Cmdline::fpu_eager = false;
 
     if (Cmdline::fpu_eager) {
         Ec::current->transfer_fpu(Ec::current);

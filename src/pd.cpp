@@ -55,7 +55,8 @@ Pd::Pd (Pd *own, mword sel, mword a) : Kobject (PD, static_cast<Space_obj *>(own
     if (this == &Pd::root) {
         bool res = Quota::init.transfer_to(quota, Quota::init.limit());
         assert(res);
-    }
+    } else
+        Atomic::add(Counter::pds, 1U);
 }
 
 template <typename S>
@@ -428,6 +429,8 @@ Pd::~Pd()
     for (unsigned cpu = 0; cpu < NUM_CPU; cpu++)
         if (Hip::cpu_online (cpu))
             Space_mem::loc[cpu].clear(quota, Space_mem::hpt.dest_loc, Space_mem::hpt.iter_loc_lev);
+
+    Atomic::sub(Counter::pds, 1U);
 }
 
 extern "C" int __cxa_atexit(void (*)(void *), void *, void *) { return 0; }

@@ -38,6 +38,11 @@ class Counter
         static unsigned vtlb_flush      CPULOCAL;
         static unsigned schedule        CPULOCAL;
         static unsigned helping         CPULOCAL;
+        static unsigned ec_fpu;
+        static unsigned ecs;
+        static unsigned pds;
+        static uint64   fpu_nm;
+        static uint64   switch_ec;
         static uint64   cycles_idle     CPULOCAL;
 
         static void dump();
