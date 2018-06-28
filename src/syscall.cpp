@@ -585,7 +585,7 @@ void Ec::sys_lookup()
 
     Sys_lookup *s = static_cast<Sys_lookup *>(current->sys_regs());
 
-    if (s->flags()) {
+    if (s->flags() == 1) {
         trace (TRACE_SYSCALL, "EC:%p SYS_DELEGATE PD:%lx->%lx T:%d B:%#lx", current, s->pd_snd(), s->pd_dst(), s->crd().type(), s->crd().base());
 
         Kobject *obj_dst = Space_obj::lookup (s->pd_dst()).obj();
@@ -614,6 +614,10 @@ void Ec::sys_lookup()
            sys_finish<Sys_regs::QUO_OOM>();
         }
 
+        sys_finish<Sys_regs::SUCCESS>();
+    } else
+    if (s->flags() == 2) {
+        Counter::dump();
         sys_finish<Sys_regs::SUCCESS>();
     }
 
