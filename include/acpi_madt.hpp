@@ -123,6 +123,7 @@ class Acpi_table_madt : public Acpi_table
         Acpi_apic   apic[];
 
         static bool sci_overridden;
+        static bool pic_present;
 
         INIT
         void parse() const;

@@ -32,6 +32,7 @@
 #include "gsi.hpp"
 #include "hpt.hpp"
 #include "io.hpp"
+#include "pic.hpp"
 #include "stdio.hpp"
 #include "x86.hpp"
 #include "pd.hpp"
@@ -42,7 +43,6 @@ Acpi_gas    Acpi::gpe0_sts, Acpi::gpe1_sts, Acpi::gpe0_ena, Acpi::gpe1_ena;
 uint32      Acpi::feature;
 uint8       Acpi::reset_val;
 unsigned    Acpi::irq, Acpi::gsi;
-bool        Acpi_table_madt::sci_overridden = false;
 
 void Acpi::delay (unsigned ms)
 {
@@ -81,6 +81,10 @@ void Acpi::setup()
         static_cast<Acpi_table_dmar *>(Hpt::remap (Pd::kern.quota, dmar))->parse();
     if (ivrs)
         static_cast<Acpi_table_ivrs *>(Hpt::remap (Pd::kern.quota, ivrs))->parse();
+
+    if (Acpi_table_madt::pic_present) {
+        Pic::init();
+    }
 
     if (!Acpi_table_madt::sci_overridden) {
         Acpi_intr sci_override;
