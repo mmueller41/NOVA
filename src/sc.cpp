@@ -110,7 +110,9 @@ void Sc::ready_dequeue (uint64 t)
 
     trace (TRACE_SCHEDULE, "DEQ:%p (%llu) PRIO:%#x TOP:%#x", this, left, prio, prio_top);
 
-    ec->add_tsc_offset (tsc - t);
+    bool const dont_add = !ec->utcb && ec->partner;
+    if (!dont_add)
+        ec->add_tsc_offset (tsc - t);
 
     tsc = t;
 }
