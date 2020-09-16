@@ -398,6 +398,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         NORETURN
         void activate();
 
+        static void vm_init();
+
         template <void (*)()>
         NORETURN
         static void send_msg();

@@ -304,6 +304,11 @@ void Exc_regs::fpu_ctrl (bool on)
 {
     if (Hip::feature() & Hip::FEAT_VMX) {
 
+        /* called via make_current()->transfer_fpu and depend on HZD_FPU
+         * fpu_load and fpu_ctrl is called before vm_init was running XXX
+         */
+        if (!vmcs) return;
+
         vmcs->make_current();
 
         mword cr0 = get_cr0<Vmcs>();
