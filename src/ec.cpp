@@ -91,21 +91,10 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
         regs.vtlb = new (pd->quota) Vtlb;
         regs.fpu_on = Cmdline::fpu_eager;
 
-        if (Hip::feature() & Hip::FEAT_VMX || Hip::feature() & Hip::FEAT_SVM)
-            cont = vm_init;
-    }
-}
-
-void Ec::vm_init()
-{
-    Pd * pd = Pd::current;
-    Ec * ec = Ec::current;
-    Exc_regs &regs = current->regs;
-
         if (Hip::feature() & Hip::FEAT_VMX) {
-            mword host_cr3 = pd->loc[ec->cpu].root(pd->quota) | (Cpu::feature (Cpu::FEAT_PCID) ? pd->did : 0);
+            mword host_cr3 = pd->loc[c].root(pd->quota) | (Cpu::feature (Cpu::FEAT_PCID) ? pd->did : 0);
 
-            regs.vmcs = new (pd->quota) Vmcs (reinterpret_cast<mword>(ec->sys_regs() + 1),
+            regs.vmcs = new (pd->quota) Vmcs (reinterpret_cast<mword>(sys_regs() + 1),
                                               pd->Space_pio::walk(pd->quota),
                                               host_cr3,
                                               pd->ept.root(pd->quota));
@@ -129,15 +118,18 @@ void Ec::vm_init()
             Vmcs::write(Vmcs::APIC_VIRT_ADDR, virtual_apic_page_phys);
 
             regs.vmcs->clear();
-            send_msg<ret_user_vmresume>();
+            cont = send_msg<ret_user_vmresume>;
+            trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs, regs.vtlb);
 
         } else if (Hip::feature() & Hip::FEAT_SVM) {
 
             regs.REG(ax) = Buddy::ptr_to_phys (regs.vmcb = new (pd->quota) Vmcb (pd->quota, pd->Space_pio::walk(pd->quota), pd->npt.root(pd->quota)));
 
             regs.nst_ctrl<Vmcb>();
-            send_msg<ret_user_vmrun>();
+            cont = send_msg<ret_user_vmrun>;
+            trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCB:%p VTLB:%p)", this, p, regs.vmcb, regs.vtlb);
         }
+    }
 }
 
 Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, static_cast<Space_obj *>(own), 0, 0xd, free, pre_free), cont (f), regs (clone->regs), rcap (clone), utcb (clone->utcb), pd (p), partner (nullptr), prev (nullptr), next (nullptr), fpu (clone->fpu), cpu (static_cast<uint16>(c)), glb (!!f), evt (clone->evt), timeout (this), user_utcb (0), xcpu_sm (clone->xcpu_sm), pt_oom(clone->pt_oom)
