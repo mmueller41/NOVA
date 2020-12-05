@@ -58,7 +58,9 @@ union {
     char pad2[PAGE_SIZE - 1024];
     struct {
         Utcb_segment        es, cs, ss, ds, fs, gs, gdtr, ldtr, idtr, tr;
-        char                reserved3[48];
+        char                reserved3[43];
+        char                cpl;
+        char                reserved3a[4];
         uint64              efer;
         char                reserved4[112];
         uint64              cr4, cr3, cr0, dr7, dr6, rflags, rip;

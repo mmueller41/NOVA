@@ -513,6 +513,13 @@ bool Utcb::load_svm (Cpu_regs *regs)
     if (m & Mtd::CS_SS) {
         cs = vmcb->cs;
         ss = vmcb->ss;
+
+/*
+        if (((vmcb->ss.ar >> 5) & 0x3) != vmcb->cpl) {
+            ss.ar &= uint16(~(3u << 5));
+            ss.ar |= uint16((0x3u & vmcb->cpl) << 5);
+        }
+*/
     }
 
     if (m & Mtd::TR)
