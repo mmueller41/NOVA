@@ -707,6 +707,10 @@ bool Utcb::save_svm (Cpu_regs *regs)
         vmcb->sfmask = sfmask;
         vmcb->kernel_gs_base = kernel_gs_base;
     }
+
+    if (mtd & Mtd::FLUSH_TLB) {
+        regs->tlb_flush<Vmcb> (true);
+    }
 #endif
 
     return mtd & Mtd::FPU;

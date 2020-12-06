@@ -54,6 +54,7 @@ class Mtd
             GPR_R8_R15      = 1UL << 22,
             SYSCALL_SWAPGS  = 1UL << 23,
             TPR             = 1UL << 24,
+            FLUSH_TLB       = 1UL << 25,
             FPU             = 1UL << 31,
         };
 
