@@ -137,6 +137,9 @@ void Cpu::check_features()
             default:
                 cpuid (0x8000000a, Vmcb::svm_version, ebx, ecx, Vmcb::svm_feature);
 
+                if (ebx < Space_mem::asid_alloc.max())
+                    Space_mem::asid_alloc.reserve(ebx, Space_mem::asid_alloc.max() - ebx);
+
                 if (vendor == AMD && smt) {
                     cpuid (0x80000008, eax, ebx, tpp, edx);
                     if ((tpp >> 12) & 0xf)

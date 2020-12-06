@@ -119,8 +119,10 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
             trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs, regs.vtlb);
 
         } else if (Hip::feature() & Hip::FEAT_SVM) {
+            if (pd->asid == Space_mem::NO_ASID_ID)
+                pd->asid = Space_mem::asid_alloc.alloc();
 
-            regs.REG(ax) = Buddy::ptr_to_phys (regs.vmcb = new (pd->quota) Vmcb (pd->quota, pd->Space_pio::walk(pd->quota), pd->npt.root(pd->quota)));
+            regs.REG(ax) = Buddy::ptr_to_phys (regs.vmcb = new (pd->quota) Vmcb (pd->quota, pd->Space_pio::walk(pd->quota), pd->npt.root(pd->quota), unsigned(pd->asid)));
 
             regs.nst_ctrl<Vmcb>();
             cont = send_msg<ret_user_vmrun>;

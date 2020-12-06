@@ -31,6 +31,7 @@
 
 Bit_alloc<4096, Space_mem::NO_PCID> Space_mem::did_alloc;
 Bit_alloc<1<<16, Space_mem::NO_DOMAIN_ID> Space_mem::dom_alloc;
+Bit_alloc<1<<15, Space_mem::NO_ASID_ID>   Space_mem::asid_alloc;
 
 void Space_mem::init (Quota &quota, unsigned cpu)
 {

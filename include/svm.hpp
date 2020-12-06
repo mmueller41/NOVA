@@ -132,11 +132,12 @@ union {
             Buddy::allocator.free (reinterpret_cast<mword>(obj), quota);
         }
 
-        Vmcb (Quota &quota, mword, mword);
+        Vmcb (Quota &quota, mword, mword, unsigned);
 
         ALWAYS_INLINE
-        inline Vmcb()
+        inline Vmcb(unsigned const id)
         {
+            asid = id;
             asm volatile ("vmsave" : : "a" (Buddy::ptr_to_phys (this)) : "memory");
         }
 

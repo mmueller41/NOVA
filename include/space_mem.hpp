@@ -47,8 +47,9 @@ class Space_mem : public Space
             Hpt npt;
         };
 
-        enum { NO_PCID = 2, NO_DOMAIN_ID = 0 };
+        enum { NO_PCID = 2, NO_DOMAIN_ID = 0, NO_ASID_ID = 0 };
         mword did { NO_PCID };
+        mword asid { NO_ASID_ID };
 
         Cpuset cpus;
         Cpuset htlb;
@@ -56,6 +57,7 @@ class Space_mem : public Space
 
         static Bit_alloc<4096, NO_PCID> did_alloc;
         static Bit_alloc<1<<16, NO_DOMAIN_ID> dom_alloc;
+        static Bit_alloc<1<<15, NO_ASID_ID>   asid_alloc;
 
         mword const dom_id { NO_DOMAIN_ID };
 
@@ -70,6 +72,7 @@ class Space_mem : public Space
         {
             dom_alloc.release(dom_id);
             did_alloc.release(did);
+            asid_alloc.release(asid);
         }
 
         ALWAYS_INLINE
