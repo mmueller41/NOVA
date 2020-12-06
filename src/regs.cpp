@@ -314,7 +314,8 @@ void Exc_regs::fpu_ctrl (bool on)
 
         Vmcs::write (Vmcs::CR0_MASK, cr0_msk<Vmcs>());
 
-    } else {
+    } else
+    if (Hip::feature() & Hip::FEAT_SVM) {
 
         mword cr0 = get_cr0<Vmcb>();
         fpu_on = on;

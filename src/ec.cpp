@@ -465,7 +465,8 @@ void Ec::root_invoke()
     assert (Pd::root.did == 1);
 
     /* LazyFP vulnerability - a never ending story Intel ? */
-    if (Cpu::vendor == Cpu::Vendor::INTEL)
+/* XXX */
+//    if (Cpu::vendor == Cpu::Vendor::INTEL)
         Cmdline::fpu_eager = true;
 
     if (Cmdline::fpu_eager) {
