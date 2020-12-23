@@ -243,8 +243,7 @@ bool Utcb::load_vmx (Cpu_regs *regs)
         Msr_area *guest_msr_area = reinterpret_cast<Msr_area*>(Buddy::phys_to_ptr(guest_msr_area_phys));
         star = guest_msr_area->ia32_star.msr_data;
         lstar = guest_msr_area->ia32_lstar.msr_data;
-        cstar = guest_msr_area->ia32_cstar.msr_data;
-        sfmask = guest_msr_area->ia32_sfmask.msr_data;
+        fmask = guest_msr_area->ia32_fmask.msr_data;
         kernel_gs_base = guest_msr_area->ia32_kernel_gs_base.msr_data;
     }
 
@@ -426,8 +425,7 @@ bool Utcb::save_vmx (Cpu_regs *regs)
     Msr_area *host_msr_area = reinterpret_cast<Msr_area*>(Buddy::phys_to_ptr(host_msr_area_phys));
     host_msr_area->ia32_star.msr_data = Msr::read<uint64>(Msr::IA32_STAR);
     host_msr_area->ia32_lstar.msr_data = Msr::read<uint64>(Msr::IA32_LSTAR);
-    host_msr_area->ia32_cstar.msr_data = Msr::read<uint64>(Msr::IA32_CSTAR);
-    host_msr_area->ia32_sfmask.msr_data = Msr::read<uint64>(Msr::IA32_SFMASK);
+    host_msr_area->ia32_fmask.msr_data = Msr::read<uint64>(Msr::IA32_FMASK);
     host_msr_area->ia32_kernel_gs_base.msr_data = Msr::read<uint64>(Msr::IA32_KERNEL_GS_BASE);
 
     if (mtd & Mtd::SYSCALL_SWAPGS) {
@@ -435,8 +433,7 @@ bool Utcb::save_vmx (Cpu_regs *regs)
         Msr_area *guest_msr_area = reinterpret_cast<Msr_area*>(Buddy::phys_to_ptr(guest_msr_area_phys));
         guest_msr_area->ia32_star.msr_data = star;
         guest_msr_area->ia32_lstar.msr_data = lstar;
-        guest_msr_area->ia32_cstar.msr_data = cstar;
-        guest_msr_area->ia32_sfmask.msr_data = sfmask;
+        guest_msr_area->ia32_fmask.msr_data = fmask;
         guest_msr_area->ia32_kernel_gs_base.msr_data = kernel_gs_base;
     }
 
@@ -582,10 +579,9 @@ bool Utcb::load_svm (Cpu_regs *regs)
         efer = vmcb->efer;
 
     if (m & Mtd::SYSCALL_SWAPGS) {
-        star   = vmcb->star;
-        lstar  = vmcb->lstar;
-        cstar  = vmcb->cstar;
-        sfmask = vmcb->sfmask;
+        star  = vmcb->star;
+        lstar = vmcb->lstar;
+        fmask = vmcb->sfmask;
         kernel_gs_base = vmcb->kernel_gs_base;
     }
 #endif
@@ -710,8 +706,7 @@ bool Utcb::save_svm (Cpu_regs *regs)
     if (mtd & Mtd::SYSCALL_SWAPGS) {
         vmcb->star   = star;
         vmcb->lstar  = lstar;
-        vmcb->cstar  = cstar;
-        vmcb->sfmask = sfmask;
+        vmcb->sfmask = fmask;
         vmcb->kernel_gs_base = kernel_gs_base;
     }
 

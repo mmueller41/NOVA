@@ -457,12 +457,11 @@ struct PACKED Msr_entry
 
 struct Msr_area
 {
-    enum { MSR_COUNT = 5 };
+    enum { MSR_COUNT = 4 };
 
     Msr_entry ia32_star           { Msr::IA32_STAR };
     Msr_entry ia32_lstar          { Msr::IA32_LSTAR };
-    Msr_entry ia32_cstar          { Msr::IA32_CSTAR };
-    Msr_entry ia32_sfmask         { Msr::IA32_SFMASK };
+    Msr_entry ia32_fmask          { Msr::IA32_FMASK };
     Msr_entry ia32_kernel_gs_base { Msr::IA32_KERNEL_GS_BASE };
 
     ALWAYS_INLINE
