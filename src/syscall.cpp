@@ -849,6 +849,15 @@ void Ec::sys_ec_ctrl()
             break;
         }
 
+        case 6: /* MSR */
+        {
+            if (!current->utcb)
+                sys_finish<Sys_regs::BAD_PAR>();
+
+            Msr::user_access(*(current->utcb));
+            break;
+        }
+
         default:
             sys_finish<Sys_regs::BAD_PAR>();
     }
