@@ -25,6 +25,7 @@
 #include "types.hpp"
 
 struct Utcb;
+struct Kobject;
 
 class Msr
 {
@@ -130,6 +131,8 @@ class Msr
         {
             asm volatile ("wrmsr" : : "a" (static_cast<mword>(val)), "d" (static_cast<mword>(static_cast<uint64>(val) >> 32)), "c" (msr));
         }
+
+        static Kobject * msr_cap;
 
         static void user_access(Utcb &);
 };

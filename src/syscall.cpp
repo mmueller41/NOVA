@@ -854,6 +854,10 @@ void Ec::sys_ec_ctrl()
             if (!current->utcb)
                 sys_finish<Sys_regs::BAD_PAR>();
 
+            Capability cap = Space_obj::lookup (r->ec());
+            if (!Msr::msr_cap || cap.obj() != Msr::msr_cap)
+                sys_finish<Sys_regs::BAD_CAP>();
+trace(0, " success");
             Msr::user_access(*(current->utcb));
             break;
         }

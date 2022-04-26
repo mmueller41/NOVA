@@ -1,5 +1,8 @@
 #include "msr.hpp"
 #include "utcb.hpp"
+#include "utcb.hpp"
+
+Kobject * Msr::msr_cap {};
 
 void Msr::user_access(Utcb &utcb)
 {
