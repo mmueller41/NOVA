@@ -43,7 +43,7 @@ void Lapic::init_cpuid()
     Cpu::id = Cpu::find_by_apic_id (Lapic::id());
 }
 
-void Lapic::init(bool invariant_tsc)
+void Lapic::init(bool const invariant_tsc)
 {
     Paddr apic_base = Msr::read<Paddr>(Msr::IA32_APIC_BASE);
     Msr::write (Msr::IA32_APIC_BASE, apic_base | 0x800);
@@ -100,9 +100,11 @@ void Lapic::init(bool invariant_tsc)
 
         trace (0, "TSC:%u kHz BUS:%u kHz%s%s", freq_tsc, freq_bus, measured ? " (measured)" : "", dl ? " DL" : "");
 
-        send_ipi (0, AP_BOOT_PADDR >> PAGE_BITS, DLV_SIPI, DSH_EXC_SELF);
-        Acpi::delay (1);
-        send_ipi (0, AP_BOOT_PADDR >> PAGE_BITS, DLV_SIPI, DSH_EXC_SELF);
+        if (Cpu::online > 1) {
+            send_ipi (0, AP_BOOT_PADDR >> PAGE_BITS, DLV_SIPI, DSH_EXC_SELF);
+            Acpi::delay (1);
+            send_ipi (0, AP_BOOT_PADDR >> PAGE_BITS, DLV_SIPI, DSH_EXC_SELF);
+        }
     }
 
     write (LAPIC_TMR_ICR, 0);
@@ -114,6 +116,9 @@ bool Lapic::read_tsc_freq()
 {
     if (Cpu::vendor != Cpu::Vendor::INTEL)
         return false;
+
+    if (freq_tsc || freq_bus)
+        return true;
 
     unsigned const model  = Cpu::model[Cpu::id];
     unsigned const family = Cpu::family[Cpu::id];

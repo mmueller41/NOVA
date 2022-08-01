@@ -32,7 +32,9 @@
 #include "sm.hpp"
 #include "pt.hpp"
 
-Ec *Ec::current, *Ec::fpowner;
+Ec *Ec::current, *Ec::fpowner, *Ec::ec_idle;
+Sm *Ec::auth_suspend;
+
 uint64 Ec::killed_time[NUM_CPU];
 
 // Constructors
@@ -76,7 +78,7 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
 
         pd->Space_mem::insert (pd->quota, u, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, Buddy::ptr_to_phys (utcb));
 
-        regs.dst_portal = NUM_EXC - 2;
+        regs.dst_portal = PT_STARTUP;
 
         trace (TRACE_SYSCALL, "EC:%p created (PD:%p CPU:%#x UTCB:%#lx ESP:%lx EVT:%#x)", this, p, c, u, s, e);
 
@@ -259,7 +261,7 @@ void Ec::handle_hazard (mword hzd, void (*func)())
         if (func == ret_user_sysexit)
             current->redirect_to_iret();
 
-        current->regs.dst_portal = NUM_EXC - 1;
+        current->regs.dst_portal = PT_RECALL;
         send_msg<ret_user_iret>();
     }
 
@@ -473,6 +475,11 @@ void Ec::root_invoke()
     Space_obj::insert_root (Pd::kern.quota, Ec::current);
     Space_obj::insert_root (Pd::kern.quota, Sc::current);
 
+    /* authority capability for ACPI suspend syscall */
+    Ec::auth_suspend = new (Pd::root) Sm (&Pd::root, SM_ACPI_SUSPEND);
+    auth_suspend->add_ref();
+    Space_obj::insert_root (Pd::kern.quota, auth_suspend);
+
     /* adjust root quota used by Pd::kern during bootstrap */
     Quota::boot(Pd::kern.quota, Pd::root.quota);
 
@@ -562,8 +569,25 @@ void Ec::idl_handler()
         Rcu::update();
 }
 
+void Ec::hlt_prepare()
+{
+    if (Hip::feature() & Hip::FEAT_VMX) {
+        Vmcs_state::flush_all_vmcs();
+
+        Vmcs_state::vmxoff();
+    } else
+    if (Hip::feature() & Hip::FEAT_SVM) {
+        Vmcb_state::flush_all_vmcb();
+    }
+
+    current->flush_fpu();
+    Ec::ec_idle->pd->make_current();
+
+    wbinvd();
+}
+
 void Ec::hlt_handler()
 {
-    wbinvd();
+    hlt_prepare();
     shutdown();
 }

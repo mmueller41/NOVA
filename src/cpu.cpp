@@ -226,9 +226,10 @@ void Cpu::setup_pcid()
     set_cr4 (get_cr4() | Cpu::CR4_PCIDE);
 }
 
-void Cpu::init()
+void Cpu::init(bool resume)
 {
-    for (void (**func)() = &CTORS_L; func != &CTORS_C; (*func++)()) ;
+    if (!resume)
+        for (void (**func)() = &CTORS_L; func != &CTORS_C; (*func++)()) ;
 
     Gdt::build();
     Tss::build();
@@ -238,7 +239,8 @@ void Cpu::init()
     Tss::load();
     Idt::load();
 
-    Lapic::init_cpuid();
+    if (!resume)
+        Lapic::init_cpuid();
 
     /* handle case running on machine with too many CPUs */
     if (id >= NUM_CPU) {
@@ -263,13 +265,15 @@ void Cpu::init()
 
     Lapic::init(invariant_tsc());
 
-    row = Console_vga::con.spinner (id);
+    if (!resume) {
+        row = Console_vga::con.spinner (id);
 
-    Paddr phys; mword attr;
-    Pd::kern.Space_mem::loc[id] = Hptp (Hpt::current());
-    Pd::kern.Space_mem::loc[id].lookup (CPU_LOCAL_DATA, phys, attr);
-    Pd::kern.Space_mem::insert (Pd::kern.quota, HV_GLOBAL_CPUS + id * PAGE_SIZE, 0, Hpt::HPT_NX | Hpt::HPT_G | Hpt::HPT_W | Hpt::HPT_P, phys);
-    Hpt::ord = min (Hpt::ord, feature (FEAT_1GB_PAGES) ? 26UL : 17UL);
+        Paddr phys; mword attr;
+        Pd::kern.Space_mem::loc[id] = Hptp (Hpt::current());
+        Pd::kern.Space_mem::loc[id].lookup (CPU_LOCAL_DATA, phys, attr);
+        Pd::kern.Space_mem::insert (Pd::kern.quota, HV_GLOBAL_CPUS + id * PAGE_SIZE, 0, Hpt::HPT_NX | Hpt::HPT_G | Hpt::HPT_W | Hpt::HPT_P, phys);
+        Hpt::ord = min (Hpt::ord, feature (FEAT_1GB_PAGES) ? 26UL : 17UL);
+    }
 
     if (EXPECT_TRUE (feature (FEAT_ACPI)))
         setup_thermal();
@@ -294,7 +298,8 @@ void Cpu::init()
 
     trace (TRACE_CPU, "CORE:%x:%x:%x %x:%x:%x:%x [%x] %.48s", package[Cpu::id], core[Cpu::id], thread[Cpu::id], family[Cpu::id], model[Cpu::id], stepping[Cpu::id], platform[Cpu::id], patch[Cpu::id], reinterpret_cast<char *>(name));
 
-    Hip::add_cpu();
+    if (!resume)
+        Hip::add_cpu();
 
     if (Cpu::feature (Cpu::FEAT_RDTSCP))
         Msr::write<uint64>(Msr::IA32_TSC_AUX, Cpu::id);

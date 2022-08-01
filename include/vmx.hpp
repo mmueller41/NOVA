@@ -36,6 +36,7 @@ class Vmcs
         uint32  abort { 0 };
 
         static Vmcs *current CPULOCAL_HOT;
+        static Vmcs *root    CPULOCAL;
 
         static unsigned vpid_ctr CPULOCAL;
 
@@ -389,7 +390,15 @@ class Vmcs
             uint64 phys = Buddy::ptr_to_phys (this);
 
             bool ret;
-            asm volatile ("vmxon %1; seta %0" : "=q" (ret) : "m" (phys) : "cc");
+            asm volatile ("vmxon %1" : "=@cca" (ret) : "m" (phys) : "cc");
+            assert (ret);
+        }
+
+        ALWAYS_INLINE
+        static void vmxoff()
+        {
+            bool ret;
+            asm volatile ("vmxoff" : "=@cca" (ret) :: "cc");
             assert (ret);
         }
 
@@ -585,4 +594,6 @@ class Vmcs_state
 
             active = false;
         }
+
+        ALWAYS_INLINE static inline void vmxoff() { Vmcs::vmxoff(); }
 };

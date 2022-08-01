@@ -77,24 +77,9 @@ void Acpi_table_fadt::parse() const
     Acpi::irq     = sci_irq;
     Acpi::feature = flags;
 
-    init_gas(Acpi::pm1a_sts, Acpi::pm1a_ena, pm1_evt_len, pm1a_evt_blk, x_pm1a_evt_blk);
-    init_gas(Acpi::pm1b_sts, Acpi::pm1b_ena, pm1_evt_len, pm1b_evt_blk, x_pm1b_evt_blk);
-    init_gas(Acpi::pm1a_cnt, pm1_cnt_len, pm1a_cnt_blk, x_pm1a_cnt_blk);
-    init_gas(Acpi::pm1b_cnt, pm1_cnt_len, pm1b_cnt_blk, x_pm1b_cnt_blk);
-    init_gas(Acpi::pm2_cnt, pm2_cnt_len, pm2_cnt_blk, x_pm2_cnt_blk);
-    init_gas(Acpi::pm_tmr, pm_tmr_len, pm_tmr_blk, x_pm_tmr_blk);
-    init_gas(Acpi::gpe0_sts, Acpi::gpe0_ena, gpe0_blk_len, gpe0_blk, x_gpe0_blk);
-    init_gas(Acpi::gpe1_sts, Acpi::gpe1_ena, gpe1_blk_len, gpe1_blk, x_gpe1_blk);
-
     if (length >= 129) {
         Acpi::reset_reg = reset_reg;
         Acpi::reset_val = reset_value;
-    }
-
-    if (smi_cmd && acpi_enable) {
-        Io::out (smi_cmd, acpi_enable);
-        while (!(Acpi::read (Acpi::PM1_CNT) & Acpi::PM1_CNT_SCI_EN))
-            pause();
     }
 
     if (length >= 140) {
@@ -108,4 +93,33 @@ void Acpi_table_fadt::parse() const
 
     if (!Acpi::facs)
         Acpi::facs = firmware_ctrl;
+
+    if (Acpi::feature & HARDWARE_REDUCED_ACPI)
+        return; /* not supported by now */
+
+    init_gas(Acpi::pm1a_sts, Acpi::pm1a_ena, pm1_evt_len, pm1a_evt_blk, x_pm1a_evt_blk);
+    init_gas(Acpi::pm1b_sts, Acpi::pm1b_ena, pm1_evt_len, pm1b_evt_blk, x_pm1b_evt_blk);
+    init_gas(Acpi::pm1a_cnt, pm1_cnt_len, pm1a_cnt_blk, x_pm1a_cnt_blk);
+    init_gas(Acpi::pm1b_cnt, pm1_cnt_len, pm1b_cnt_blk, x_pm1b_cnt_blk);
+    init_gas(Acpi::pm2_cnt, pm2_cnt_len, pm2_cnt_blk, x_pm2_cnt_blk);
+    init_gas(Acpi::pm_tmr, pm_tmr_len, pm_tmr_blk, x_pm_tmr_blk);
+    init_gas(Acpi::gpe0_sts, Acpi::gpe0_ena, gpe0_blk_len, gpe0_blk, x_gpe0_blk);
+    init_gas(Acpi::gpe1_sts, Acpi::gpe1_ena, gpe1_blk_len, gpe1_blk, x_gpe1_blk);
+
+    init();
+}
+
+
+void Acpi_table_fadt::init() const
+{
+    if (Acpi::feature & HARDWARE_REDUCED_ACPI)
+        return;
+
+    if (!smi_cmd || !acpi_enable || (Acpi::read (Acpi::PM1_CNT) & Acpi::PM1_CNT_SCI_EN))
+        return;
+
+    Io::out (smi_cmd, acpi_enable);
+    while (!(Acpi::read (Acpi::PM1_CNT) & Acpi::PM1_CNT_SCI_EN)) {
+        pause();
+    }
 }

@@ -187,7 +187,7 @@ void Ec::oom_call_cpu(Pt * pt, mword src, void (*CC)(), void (*HELP)())
 
     if (this->cpu != pt->ec->xcpu) {
         if (CC == sys_call) this->oom_xcpu<sys_call>(pt, src, s); else
-        if (CC == sys_lookup) this->oom_xcpu<sys_lookup>(pt, src, s); else
+        if (CC == sys_misc) this->oom_xcpu<sys_misc>(pt, src, s); else
         if (CC == sys_sm_ctrl) this->oom_xcpu<sys_sm_ctrl>(pt, src, s); else
         if (CC == sys_ec_ctrl) this->oom_xcpu<sys_ec_ctrl>(pt, src, s); else
         if (CC == sys_sc_ctrl) this->oom_xcpu<sys_sc_ctrl>(pt, src, s); else

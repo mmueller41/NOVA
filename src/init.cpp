@@ -47,8 +47,14 @@ mword kern_ptab_setup()
 
     auto const cpuid = Cpu::find_by_apic_id (apic_id());
 
-    if (cpuid < NUM_CPU && cr3[cpuid])
+    if (cpuid < NUM_CPU && cr3[cpuid]) {
+        if (cpuid == 0) {
+            /* reinit Acpi on resume */
+            Acpi::init();
+        }
+
         return cr3[cpuid];
+    }
 
     Hptp hpt;
 

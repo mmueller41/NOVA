@@ -77,6 +77,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         static uint64 killed_time[NUM_CPU];
 
+        static Sm * auth_suspend;
+
         REGPARM (1)
         static void handle_exc (Exc_regs *) asm ("exc_handler");
 
@@ -156,7 +158,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static inline void destroy (Ec *obj, Pd &pd) { obj->~Ec(); pd.ec_cache.free (obj, pd.quota); }
 
         ALWAYS_INLINE
-        inline bool idle_ec() { return !utcb && !regs.vmcb_state && !regs.vmcs_state && !regs.vtlb; }
+        inline bool idle_ec() { return ec_idle == this; }
 
         static void free (Rcu_elem * a)
         {
@@ -217,6 +219,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         void save_fpu();
 
         void transfer_fpu (Ec *);
+        void flush_fpu ();
 
         Ec(const Ec&);
         Ec &operator = (Ec const &);
@@ -224,6 +227,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
     public:
         static Ec *current CPULOCAL_HOT;
         static Ec *fpowner CPULOCAL;
+        static Ec *ec_idle CPULOCAL;
 
         Ec (Pd *, void (*)(), unsigned);
         Ec (Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
@@ -458,7 +462,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static void sys_revoke();
 
         NORETURN
-        static void sys_lookup();
+        static void sys_misc();
 
         NORETURN
         static void sys_ec_ctrl();
@@ -511,6 +515,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static void die (char const *, Exc_regs * = &current->regs);
 
         static void idl_handler();
+
+        static void hlt_prepare();
 
         NORETURN
         static void hlt_handler();

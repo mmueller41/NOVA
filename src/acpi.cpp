@@ -21,6 +21,7 @@
 #include "acpi.hpp"
 #include "acpi_dmar.hpp"
 #include "acpi_fadt.hpp"
+#include "acpi_facs.hpp"
 #include "acpi_hpet.hpp"
 #include "acpi_ivrs.hpp"
 #include "acpi_madt.hpp"
@@ -36,6 +37,8 @@
 #include "stdio.hpp"
 #include "x86.hpp"
 #include "pd.hpp"
+#include "console.hpp"
+#include "ec.hpp"
 
 Paddr       Acpi::dmar, Acpi::fadt, Acpi::facs, Acpi::hpet, Acpi::madt, Acpi::mcfg, Acpi::rsdt, Acpi::xsdt, Acpi::ivrs;
 Acpi_gas    Acpi::pm1a_sts, Acpi::pm1b_sts, Acpi::pm1a_ena, Acpi::pm1b_ena, Acpi::pm1a_cnt, Acpi::pm1b_cnt, Acpi::pm2_cnt, Acpi::pm_tmr, Acpi::reset_reg;
@@ -43,6 +46,7 @@ Acpi_gas    Acpi::gpe0_sts, Acpi::gpe1_sts, Acpi::gpe0_ena, Acpi::gpe1_ena;
 uint32      Acpi::feature;
 uint8       Acpi::reset_val;
 unsigned    Acpi::irq, Acpi::gsi;
+uint64      Acpi::resume_time;
 
 void Acpi::delay (unsigned ms)
 {
@@ -82,9 +86,7 @@ void Acpi::setup()
     if (ivrs)
         static_cast<Acpi_table_ivrs *>(Hpt::remap (Pd::kern.quota, ivrs))->parse();
 
-    if (Acpi_table_madt::pic_present) {
-        Pic::init();
-    }
+    Acpi::init();
 
     if (!Acpi_table_madt::sci_overridden) {
         Acpi_intr sci_override;
@@ -98,10 +100,23 @@ void Acpi::setup()
 
     gsi = Gsi::irq_to_gsi (irq);
 
-    clear (GPE0_ENA, 0);
-    clear (GPE1_ENA, 0);
+    write (PM1_ENA, 0);
 
-    trace (TRACE_ACPI, "ACPI: GSI:%#x", gsi);
+    clear (GPE0_ENA);
+    clear (GPE1_ENA);
+    clear (GPE0_STS);
+    clear (GPE1_STS);
+}
+
+void Acpi::init()
+{
+    if (fadt)
+        static_cast<Acpi_table_fadt *>(Hpt::remap (Pd::kern.quota, fadt))->init();
+
+    if (Acpi_table_madt::pic_present)
+        Pic::init();
+
+    write (PM1_STS, (read (PM1_STS) & (PM1_STS_PWRBTN | PM1_STS_SLPBTN | PM1_STS_RTC)) | PM1_STS_WAKE);
 }
 
 unsigned Acpi::read (Register reg)
@@ -127,15 +142,13 @@ unsigned Acpi::read (Register reg)
     return 0;
 }
 
-void Acpi::clear (Register reg, unsigned val)
+void Acpi::clear (Register reg)
 {
     switch (reg) {
-        case GPE0_ENA:
-            hw_write (&gpe0_ena, val, true);
-            break;
-        case GPE1_ENA:
-            hw_write (&gpe1_ena, val, true);
-            break;
+        case GPE0_ENA: hw_write (&gpe0_ena,  0u, true); break;
+        case GPE1_ENA: hw_write (&gpe1_ena,  0u, true); break;
+        case GPE0_STS: hw_write (&gpe0_sts, ~0u, true); break;
+        case GPE1_STS: hw_write (&gpe1_sts, ~0u, true); break;
         default:
             Console::panic ("Unimplemented register Acpi::clear");
             break;
@@ -220,4 +233,48 @@ void Acpi::hw_write (Acpi_gas *gas, unsigned val, bool prm)
     }
 
     Console::panic ("Unimplemented ASID %d bits=%d prm=%u", gas->asid, gas->bits, prm);
+}
+
+extern "C" NORETURN void bootstrap();
+
+bool Acpi::suspend(uint8 const sleep_type_a, uint8 const sleep_type_b)
+{
+    bool sleep_support = pm1a_cnt.valid() && pm1a_sts.valid();
+    if (!facs || !sleep_support)
+        return false;
+
+    if (!Lapic::hlt_other_cpus())
+        return false;
+
+    Acpi::resume_time = Lapic::time();
+
+    Ec::hlt_prepare();
+
+    auto &vector = *static_cast<Acpi_table_facs *>(Hpt::remap (Pd::kern.quota, facs));
+    vector.firmware_waking_vector   = static_cast<uint32>(AP_BOOT_PADDR);
+    vector.x_firmware_waking_vector = 0;
+
+    /* switch off triggers which cause immediate wakeup */
+    write (PM1_STS, PM1_STS_WAKE | PM1_STS_PWRBTN | PM1_STS_SLPBTN);
+    clear (GPE0_STS);
+    clear (GPE1_STS);
+
+    Console::disable_all();
+
+    unsigned cnt  = read(PM1_CNT) & ~unsigned(PM1_CNT_SLP_MASK << PM1_CNT_SLP_SHIFT);
+    unsigned pm1a = (sleep_type_a & PM1_CNT_SLP_MASK) << PM1_CNT_SLP_SHIFT;
+    unsigned pm1b = (sleep_type_b & PM1_CNT_SLP_MASK) << PM1_CNT_SLP_SHIFT;
+
+    hw_write (&pm1a_cnt, cnt | pm1a | PM1_CNT_SLP_EN);
+    hw_write (&pm1b_cnt, cnt | pm1b | PM1_CNT_SLP_EN);
+
+    /* in S1 case wake up bit will be set, other S* use assembly entry */
+    while ( not (Acpi::read(PM1_STS) & PM1_STS_WAKE)) {
+        pause();
+    }
+
+    bootstrap();
+
+    /* not reached */
+    return false;
 }

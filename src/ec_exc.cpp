@@ -84,6 +84,24 @@ void Ec::transfer_fpu (Ec *ec)
     assert (ok);
 }
 
+void Ec::flush_fpu()
+{
+    if (!fpowner)
+        return;
+
+    Fpu::enable();
+
+    fpowner->save_fpu();
+
+    Fpu::disable();
+
+    auto flush_ec = fpowner;
+    fpowner = nullptr;
+
+    if (flush_ec->del_rcu())
+        Rcu::call (flush_ec);
+}
+
 void Ec::handle_exc_nm()
 {
     if (!Cmdline::fpu_lazy)

@@ -110,11 +110,15 @@ class Acpi_table_fadt : public Acpi_table
             S4_RTC_STS_VALID            = 1u << 16,
             REMOTE_POWER_ON_CAPABLE     = 1u << 17,
             FORCE_APIC_CLUSTER_MODEL    = 1u << 18,
-            FORCE_APIC_PHYSICAL_MODE    = 1u << 19
+            FORCE_APIC_PHYSICAL_MODE    = 1u << 19,
+            HARDWARE_REDUCED_ACPI       = 1u << 20
         };
 
         INIT
         void parse() const;
+
+        INIT
+        void init() const;
 
         void init_gas(Acpi_gas &,             uint8, uint32, Acpi_gas const &) const;
         void init_gas(Acpi_gas &, Acpi_gas &, uint8, uint32, Acpi_gas const &) const;
