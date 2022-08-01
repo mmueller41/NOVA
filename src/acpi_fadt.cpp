@@ -18,6 +18,7 @@
 
 #include "acpi.hpp"
 #include "acpi_fadt.hpp"
+#include "acpi_facs.hpp"
 #include "io.hpp"
 #include "x86.hpp"
 #include "assert.hpp"
@@ -95,4 +96,16 @@ void Acpi_table_fadt::parse() const
         while (!(Acpi::read (Acpi::PM1_CNT) & Acpi::PM1_CNT_SCI_EN))
             pause();
     }
+
+    if (length >= 140) {
+#ifdef __i386__
+        if (x_firmware_ctrl <= ~0U - sizeof(Acpi_table_facs) + 1)
+            Acpi::facs = static_cast<Paddr>(x_firmware_ctrl);
+#else
+        Acpi::facs = x_firmware_ctrl;
+#endif
+    }
+
+    if (!Acpi::facs)
+        Acpi::facs = firmware_ctrl;
 }
