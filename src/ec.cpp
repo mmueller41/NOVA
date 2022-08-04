@@ -553,3 +553,9 @@ void Ec::idl_handler()
     if (Ec::current->cont == Ec::idle)
         Rcu::update();
 }
+
+void Ec::hlt_handler()
+{
+    wbinvd();
+    shutdown();
+}

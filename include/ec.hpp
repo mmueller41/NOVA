@@ -512,6 +512,9 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         static void idl_handler();
 
+        NORETURN
+        static void hlt_handler();
+
         ALWAYS_INLINE
         static inline void *operator new (size_t, Pd &pd) { return pd.ec_cache.alloc(pd.quota); }
 

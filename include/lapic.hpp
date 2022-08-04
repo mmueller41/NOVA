@@ -176,4 +176,6 @@ class Lapic
 
            return !timeout;
         }
+
+        static bool hlt_other_cpus();
 };

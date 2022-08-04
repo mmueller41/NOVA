@@ -22,6 +22,7 @@
 #include "acpi.hpp"
 #include "cmdline.hpp"
 #include "ec.hpp"
+#include "hip.hpp"
 #include "lapic.hpp"
 #include "msr.hpp"
 #include "rcu.hpp"
@@ -224,7 +225,8 @@ void Lapic::lvt_vector (unsigned vector)
 
     eoi();
 
-    Counter::print<1,16> (++Counter::lvt[lvt], Console_vga::COLOR_LIGHT_BLUE, lvt + SPN_LVT);
+    if (lvt < NUM_LVT)
+        Counter::print<1,16> (++Counter::lvt[lvt], Console_vga::COLOR_LIGHT_BLUE, lvt + SPN_LVT);
 }
 
 void Lapic::ipi_vector (unsigned vector)
@@ -235,9 +237,43 @@ void Lapic::ipi_vector (unsigned vector)
         case VEC_IPI_RRQ: Sc::rrq_handler(); break;
         case VEC_IPI_RKE: Sc::rke_handler(); break;
         case VEC_IPI_IDL: Ec::idl_handler(); break;
+        case VEC_IPI_HLT:
+            /* hlt handler does not return */
+            ++Counter::ipi[ipi];
+            Ec::hlt_handler();
+            break;
     }
 
     eoi();
 
-    Counter::print<1,16> (++Counter::ipi[ipi], Console_vga::COLOR_LIGHT_GREEN, ipi + SPN_IPI);
+    if (ipi < NUM_IPI)
+        Counter::print<1,16> (++Counter::ipi[ipi], Console_vga::COLOR_LIGHT_GREEN, ipi + SPN_IPI);
+}
+
+bool Lapic::hlt_other_cpus()
+{
+    bool success = true;
+
+    for (unsigned cpu = 0; cpu < NUM_CPU; cpu++) {
+
+        if (!Hip::cpu_online (cpu))
+            continue;
+
+        if (Cpu::id == cpu)
+            continue;
+
+        unsigned ctr = Counter::remote (cpu, VEC_IPI_HLT - VEC_IPI);
+
+        Lapic::send_ipi (cpu, VEC_IPI_HLT);
+
+        bool sent = Lapic::pause_loop_until(500, [&] {
+            return (Counter::remote (cpu, VEC_IPI_HLT - VEC_IPI) == ctr); });
+
+        if (!sent) {
+            trace (0, "IPI timeout hlt %u->%u", Cpu::id, cpu);
+            success = false;
+        }
+    }
+
+    return success;
 }
