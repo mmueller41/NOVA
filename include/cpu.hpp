@@ -57,6 +57,7 @@ class Cpu
             FEAT_MCE            =  7,
             FEAT_SEP            = 11,
             FEAT_MCA            = 14,
+            FEAT_X2APIC         = 21,
             FEAT_ACPI           = 22,
             FEAT_HTT            = 28,
             FEAT_VMX            = 37,

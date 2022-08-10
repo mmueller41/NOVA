@@ -28,12 +28,14 @@
 #include "lapic.hpp"
 #include "vectors.hpp"
 #include "pd.hpp"
+#include "stdio.hpp"
 
 void Acpi_table_madt::parse() const
 {
     parse_entry (Acpi_apic::LAPIC,  &parse_lapic);
     parse_entry (Acpi_apic::IOAPIC, &parse_ioapic);
     parse_entry (Acpi_apic::INTR,   &parse_intr);
+    parse_entry(Acpi_apic::X2APIC, &parse_x2apic);
 
     if (flags & 1) {
         Io::out<uint8>(0x20, 0x11);
@@ -58,6 +60,19 @@ void Acpi_table_madt::parse_lapic (Acpi_apic const *ptr)
     if (p->flags & 1 && Cpu::online < NUM_CPU) {
         Cpu::acpi_id[Cpu::online]   = p->acpi_id;
         Cpu::apic_id[Cpu::online++] = p->apic_id;
+    }
+}
+
+void Acpi_table_madt::parse_x2apic (Acpi_apic const *ptr)
+{
+    Acpi_x2apic const *p = static_cast<Acpi_x2apic const *>(ptr);
+
+    if (p->flags & 1 && Cpu::online < NUM_CPU) {
+        trace(TRACE_ACPI, "MADT: X2APIC: id=%d, uid=%d, cpuid=%d", p->apic_id, p->acpi_id, Cpu::online);
+    
+    
+        Cpu::acpi_id[Cpu::online] = static_cast<uint8>(p->acpi_id);
+        Cpu::apic_id[Cpu::online++] = static_cast<uint8>(p->apic_id);
     }
 }
 

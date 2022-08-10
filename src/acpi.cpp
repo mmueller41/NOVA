@@ -5,6 +5,8 @@
  * Economic rights: Technische Universitaet Dresden (Germany)
  *
  * Copyright (C) 2012 Udo Steinberg, Intel Corporation.
+ * 
+ * Copyright (C) 2022 Michael Müller, Osnabrück University
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -27,6 +29,7 @@
 #include "acpi_mcfg.hpp"
 #include "acpi_rsdp.hpp"
 #include "acpi_rsdt.hpp"
+#include "acpi_srat.hpp"
 #include "assert.hpp"
 #include "bits.hpp"
 #include "gsi.hpp"
@@ -36,7 +39,7 @@
 #include "x86.hpp"
 #include "pd.hpp"
 
-Paddr       Acpi::dmar, Acpi::fadt, Acpi::hpet, Acpi::madt, Acpi::mcfg, Acpi::rsdt, Acpi::xsdt, Acpi::ivrs;
+Paddr       Acpi::dmar, Acpi::fadt, Acpi::hpet, Acpi::madt, Acpi::mcfg, Acpi::rsdt, Acpi::xsdt, Acpi::ivrs, Acpi::srat;
 Acpi_gas    Acpi::pm1a_sts, Acpi::pm1b_sts, Acpi::pm1a_ena, Acpi::pm1b_ena, Acpi::pm1a_cnt, Acpi::pm1b_cnt, Acpi::pm2_cnt, Acpi::pm_tmr, Acpi::reset_reg;
 Acpi_gas    Acpi::gpe0_sts, Acpi::gpe1_sts, Acpi::gpe0_ena, Acpi::gpe1_ena;
 uint32      Acpi::feature;
@@ -81,6 +84,8 @@ void Acpi::setup()
         static_cast<Acpi_table_dmar *>(Hpt::remap (Pd::kern.quota, dmar))->parse();
     if (ivrs)
         static_cast<Acpi_table_ivrs *>(Hpt::remap (Pd::kern.quota, ivrs))->parse();
+    if (srat)
+        static_cast<Acpi_table_srat *>(Hpt::remap(Pd::kern.quota, srat))->parse();
 
     if (!Acpi_table_madt::sci_overridden) {
         Acpi_intr sci_override;

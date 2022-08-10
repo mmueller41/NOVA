@@ -31,6 +31,7 @@
 #include "pd.hpp"
 #include "multiboot.hpp"
 #include "multiboot2.hpp"
+#include "x2apic.hpp"
 
 extern "C" INIT
 mword kern_ptab_setup()
@@ -71,6 +72,20 @@ void init (mword magic, mword mbi)
 
     Idt::build();
     Gsi::setup();
+
+    /*if (X2apic::available()) { // We have the x2Apic feature, use it
+        Console::print("Found x2APIC feature.");
+        if (!(X2apic::enabled())) {
+            Console::print("Enabling x2APIC controller ");
+            X2apic::enable();
+            if (!(X2apic::enabled())) {
+                Console::panic("Failed to enable x2APIC controller");
+            }
+        } else {
+            Console::print("X2APIC already enabled.");
+        }
+    }*/
+
     Acpi::setup();
 
     Console_mem::con.setup();
