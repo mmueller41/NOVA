@@ -31,10 +31,11 @@ Console_serial::Console_serial()
     if (!Cmdline::serial)
         return;
 
-    char *mem = static_cast<char *>(Hpt::remap (Pd::kern.quota, 0));
-    if (!(base = *reinterpret_cast<uint16 *>(mem + 0x400)) &&
+    //char *mem = static_cast<char *>(Hpt::remap (Pd::kern.quota, 0));
+    /*if (!(base = *reinterpret_cast<uint16 *>(mem + 0x400)) &&
         !(base = *reinterpret_cast<uint16 *>(mem + 0x402)))
-        return;
+        return;*/
+    base = 0x3f8; // Use COM2 as default
 
     out (LCR, 0x80);
     out (DLL, (freq / 115200) & 0xff);
