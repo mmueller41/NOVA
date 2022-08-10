@@ -64,6 +64,7 @@ class Acpi_apic
             LAPIC   = 0,
             IOAPIC  = 1,
             INTR    = 2,
+            X2APIC  = 9,
         };
 };
 
@@ -102,6 +103,15 @@ class Acpi_intr : public Acpi_apic
         Acpi_inti   flags;
 };
 
+class Acpi_x2apic : public Acpi_apic
+{
+    public:
+        uint16 reserved;
+        uint32 apic_id;
+        uint32 flags;
+        uint32 acpi_id;
+};
+
 /*
  * Multiple APIC Description Table
  */
@@ -113,6 +123,8 @@ class Acpi_table_madt : public Acpi_table
 
         INIT
         static void parse_ioapic (Acpi_apic const *);
+
+        INIT static void parse_x2apic(Acpi_apic const *);
 
         INIT
         void parse_entry (Acpi_apic::Type, void (*)(Acpi_apic const *)) const;
