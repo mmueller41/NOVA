@@ -337,16 +337,22 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         NOINLINE
         void help (void (*c)())
         {
-            if (EXPECT_TRUE (cont != dead)) {
+            if (EXPECT_FALSE (cont == dead))
+                return;
 
-                Counter::print<1,16> (++Counter::helping, Console_vga::COLOR_LIGHT_WHITE, SPN_HLP);
-                current->cont = c;
+            current->cont = c;
 
-                if (EXPECT_TRUE (++Sc::ctr_loop < 100))
-                    activate();
+            /* permit re-scheduling in case of long chain or livelock loop */
+            Cpu::preemption_point();
+            if (EXPECT_FALSE (Cpu::hazard & HZD_SCHED))
+                Sc::schedule (false);
 
-                die ("Livelock");
-            }
+            Counter::print<1,16> (++Counter::helping, Console_vga::COLOR_LIGHT_WHITE, SPN_HLP);
+
+            if (EXPECT_TRUE ((++Sc::ctr_loop % 100) == 0))
+                Console::print("Long helping chain");
+
+            activate();
         }
 
         NOINLINE
