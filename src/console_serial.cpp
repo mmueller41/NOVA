@@ -36,6 +36,16 @@ Console_serial::Console_serial()
         !(base = *reinterpret_cast<uint16 *>(mem + 0x402)))
         return;
 
+    reenable();
+
+    enable();
+}
+
+void Console_serial::reenable()
+{
+    if (!base)
+        return;
+
     out (LCR, 0x80);
     out (DLL, (freq / 115200) & 0xff);
     out (DLM, (freq / 115200) >> 8);
@@ -43,8 +53,6 @@ Console_serial::Console_serial()
     out (IER, 0);
     out (FCR, 7);
     out (MCR, 3);
-
-    enable();
 }
 
 void Console_serial::putc (int c)

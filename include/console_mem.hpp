@@ -34,12 +34,14 @@ class Console_mem : public Console
 
         unsigned pos;
 
+        void reenable () override { }
+
     public:
 
         Console_mem() : pos(0) { }
 
-        void putc (int c) {
-
+        void putc (int c) override
+        {
             *reinterpret_cast<unsigned *>(buf()) = pos;
 
             *(buf() + sizeof(pos) + pos) = static_cast<char>(c);
