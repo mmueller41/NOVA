@@ -42,7 +42,7 @@ Ec::Ec (Pd *own, void (*f)(), unsigned c) : Kobject (EC, static_cast<Space_obj *
 
     regs.vtlb = nullptr;
     regs.vmcs_state = nullptr;
-    regs.vmcb = nullptr;
+    regs.vmcb_state = nullptr;
 
     tsc = rdtsc();
 }
@@ -54,7 +54,7 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
 
     regs.vtlb = nullptr;
     regs.vmcs_state = nullptr;
-    regs.vmcb = nullptr;
+    regs.vmcb_state = nullptr;
 
     if (pt_oom && !pt_oom->add_ref())
         pt_oom = nullptr;
@@ -128,11 +128,15 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
             if (pd->asid == Space_mem::NO_ASID_ID)
                 pd->asid = Space_mem::asid_alloc.alloc();
 
-            regs.REG(ax) = Buddy::ptr_to_phys (regs.vmcb = new (pd->quota) Vmcb (pd->quota, pd->Space_pio::walk(pd->quota), pd->npt.root(pd->quota), unsigned(pd->asid)));
+            auto vmcb = new (pd->quota) Vmcb (pd->quota, pd->Space_pio::walk(pd->quota),
+                                              pd->npt.root(pd->quota), unsigned(pd->asid));
+
+            regs.vmcb_state = new (pd->quota) Vmcb_state(*vmcb);
+            regs.REG(ax) = Buddy::ptr_to_phys (vmcb);
 
             regs.nst_ctrl<Vmcb>();
             cont = send_msg<ret_user_vmrun>;
-            trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCB:%p VTLB:%p)", this, p, regs.vmcb, regs.vtlb);
+            trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCB:%p VTLB:%p)", this, p, regs.vmcb_state, regs.vtlb);
         }
     }
 }
@@ -144,7 +148,7 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, stati
 
     regs.vtlb = nullptr;
     regs.vmcs_state = nullptr;
-    regs.vmcb = nullptr;
+    regs.vmcb_state = nullptr;
 
     if (pt_oom && !pt_oom->add_ref())
         pt_oom = nullptr;
@@ -167,7 +171,7 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, Pt *pt) : Kobject (E
 
     regs.vtlb = nullptr;
     regs.vmcs_state = nullptr;
-    regs.vmcb = nullptr;
+    regs.vmcb_state = nullptr;
 
     if (pt_oom && !pt_oom->add_ref())
         pt_oom = nullptr;
@@ -226,7 +230,7 @@ Ec::~Ec()
         Vmcs_state::destroy(regs.vmcs_state, pd->quota);
 
     } else if (Hip::feature() & Hip::FEAT_SVM)
-        Vmcb::destroy(regs.vmcb, pd->quota);
+        Vmcb_state::destroy(regs.vmcb_state, pd->quota);
 }
 
 void Ec::handle_hazard (mword hzd, void (*func)())
@@ -278,7 +282,7 @@ void Ec::handle_hazard (mword hzd, void (*func)())
             Vmcs::write (Vmcs::TSC_OFFSET_HI, static_cast<mword>(current->regs.tsc_offset >> 32));
         } else
         if (func == ret_user_vmrun) {
-            current->regs.vmcb->tsc_offset = current->regs.tsc_offset;
+            current->regs.vmcb_state->vmcb.tsc_offset = current->regs.tsc_offset;
         }
     }
 
@@ -383,7 +387,7 @@ void Ec::ret_user_vmrun()
     if (EXPECT_FALSE (Pd::current->gtlb.chk (Cpu::id))) {
         Pd::current->gtlb.clr (Cpu::id);
         if (current->regs.nst_on)
-            current->regs.vmcb->tlb_control = 1;
+            current->regs.vmcb_state->vmcb.tlb_control = 1;
         else
             current->regs.vtlb->flush (true);
     }
