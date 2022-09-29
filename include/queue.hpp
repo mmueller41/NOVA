@@ -27,11 +27,12 @@ template <typename T>
 class Queue
 {
     private:
-        T *headptr;
+
+        T *headptr { nullptr };
 
     public:
-        ALWAYS_INLINE
-        inline Queue() : headptr (nullptr) {}
+
+        Queue() = default;
 
         ALWAYS_INLINE
         inline T *head() const { return headptr; }
@@ -67,5 +68,18 @@ class Queue
             t->next = t->prev = nullptr;
 
             return true;
+        }
+
+        template <typename F>
+        void for_each(F const &fn)
+        {
+            T * element = headptr;
+            if (!element)
+                return;
+
+            do {
+                fn(*element);
+                element = element->next;
+            } while (element && element != headptr);
         }
 };

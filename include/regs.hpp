@@ -27,7 +27,7 @@
 #include "types.hpp"
 
 class Vmcb;
-class Vmcs;
+class Vmcs_state;
 class Vtlb;
 
 class Sys_regs
@@ -118,7 +118,7 @@ class Exc_regs : public Sys_regs
             };
             struct {
                 union {
-                    Vmcs *  vmcs;
+                    Vmcs_state *  vmcs_state;
                     Vmcb *  vmcb;
                 };
                 Vtlb *  vtlb;

@@ -148,7 +148,7 @@ bool Utcb::load_vmx (Cpu_regs *regs)
     }
 #endif
 
-    regs->vmcs->make_current();
+    regs->vmcs_state->make_current();
 
     if (m & Mtd::RSP)
         rsp = Vmcs::read (Vmcs::GUEST_RSP);
@@ -302,7 +302,7 @@ bool Utcb::save_vmx (Cpu_regs *regs)
     }
 #endif
 
-    regs->vmcs->make_current();
+    regs->vmcs_state->make_current();
 
     if (mtd & Mtd::RSP)
         Vmcs::write (Vmcs::GUEST_RSP, rsp);

@@ -44,6 +44,11 @@ Vmcs::vmx_ctrl_ent  Vmcs::ctrl_ent;
 mword               Vmcs::fix_cr0_set, Vmcs::fix_cr0_clr;
 mword               Vmcs::fix_cr4_set, Vmcs::fix_cr4_clr;
 
+Queue<Vmcs_state>   Vmcs_state::queue;
+
+INIT_PRIORITY (PRIO_SLAB)
+Slab_cache Vmcs_state::cache (sizeof (Vmcs_state), 8);
+
 Vmcs::Vmcs (mword esp, mword bmp, mword cr3, uint64 eptp) : rev (basic.revision)
 {
     make_current();
@@ -140,6 +145,7 @@ void Vmcs::init()
     set_cr4 ((get_cr4() & ~fix_cr4_clr) | fix_cr4_set);
 
     Vmcs *root = new (Pd::kern.quota) Vmcs;
+    root->vmxon();
 
     trace (TRACE_VMX, "VMCS:%#010lx REV:%#x EPT:%d URG:%d VNMI:%d VPID:%d", Buddy::ptr_to_phys (root), basic.revision, has_ept(), has_urg(), has_vnmi(), has_vpid());
 }

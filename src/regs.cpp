@@ -279,8 +279,6 @@ template <> void Exc_regs::nst_ctrl<Vmcb>(bool on)
 
 template <> void Exc_regs::nst_ctrl<Vmcs>(bool on)
 {
-    assert (Vmcs::current == vmcs);
-
     mword cr0 = get_cr0<Vmcs>();
     mword cr3 = get_cr3<Vmcs>();
     mword cr4 = get_cr4<Vmcs>();
@@ -304,7 +302,7 @@ void Exc_regs::fpu_ctrl (bool on)
 {
     if (Hip::feature() & Hip::FEAT_VMX) {
 
-        vmcs->make_current();
+        vmcs_state->make_current();
 
         mword cr0 = get_cr0<Vmcs>();
         fpu_on = on;

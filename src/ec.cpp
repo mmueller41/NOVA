@@ -41,7 +41,7 @@ Ec::Ec (Pd *own, void (*f)(), unsigned c) : Kobject (EC, static_cast<Space_obj *
     trace (TRACE_SYSCALL, "EC:%p created (PD:%p Kernel)", this, own);
 
     regs.vtlb = nullptr;
-    regs.vmcs = nullptr;
+    regs.vmcs_state = nullptr;
     regs.vmcb = nullptr;
 
     tsc = rdtsc();
@@ -53,7 +53,7 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
     pd->Space_mem::init (pd->quota, c);
 
     regs.vtlb = nullptr;
-    regs.vmcs = nullptr;
+    regs.vmcs_state = nullptr;
     regs.vmcb = nullptr;
 
     if (pt_oom && !pt_oom->add_ref())
@@ -94,10 +94,13 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
         if (Hip::feature() & Hip::FEAT_VMX) {
             mword host_cr3 = pd->loc[c].root(pd->quota) | (Cpu::feature (Cpu::FEAT_PCID) ? pd->did : 0);
 
-            regs.vmcs = new (pd->quota) Vmcs (reinterpret_cast<mword>(sys_regs() + 1),
+            auto vmcs = new (pd->quota) Vmcs (reinterpret_cast<mword>(sys_regs() + 1),
                                               pd->Space_pio::walk(pd->quota),
                                               host_cr3,
                                               pd->ept.root(pd->quota));
+
+            regs.vmcs_state = new (pd->quota) Vmcs_state(*vmcs);
+            regs.vmcs_state->make_current();
 
             regs.nst_ctrl<Vmcs>();
 
@@ -117,9 +120,9 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
             mword virtual_apic_page_phys = Buddy::ptr_to_phys(new (pd->quota) Virtual_apic_page);
             Vmcs::write(Vmcs::APIC_VIRT_ADDR, virtual_apic_page_phys);
 
-            regs.vmcs->clear();
+            regs.vmcs_state->clear();
             cont = send_msg<ret_user_vmresume>;
-            trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs, regs.vtlb);
+            trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs_state, regs.vtlb);
 
         } else if (Hip::feature() & Hip::FEAT_SVM) {
             if (pd->asid == Space_mem::NO_ASID_ID)
@@ -140,7 +143,7 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, stati
     pd->Space_mem::init (pd->quota, c);
 
     regs.vtlb = nullptr;
-    regs.vmcs = nullptr;
+    regs.vmcs_state = nullptr;
     regs.vmcb = nullptr;
 
     if (pt_oom && !pt_oom->add_ref())
@@ -163,7 +166,7 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, Pt *pt) : Kobject (E
     pd->Space_mem::init (pd->quota, c);
 
     regs.vtlb = nullptr;
-    regs.vmcs = nullptr;
+    regs.vmcs_state = nullptr;
     regs.vmcb = nullptr;
 
     if (pt_oom && !pt_oom->add_ref())
@@ -203,7 +206,7 @@ Ec::~Ec()
 
     if (Hip::feature() & Hip::FEAT_VMX) {
 
-        regs.vmcs->make_current();
+        regs.vmcs_state->make_current();
 
         mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
         Msr_area *host_msr_area = reinterpret_cast<Msr_area*>(Buddy::phys_to_ptr(host_msr_area_phys));
@@ -218,9 +221,10 @@ Ec::~Ec()
             reinterpret_cast<Virtual_apic_page*>(Buddy::phys_to_ptr(virtual_apic_page_phys));
         Virtual_apic_page::destroy(virtual_apic_page, pd->quota);
 
-        regs.vmcs->clear();
+        regs.vmcs_state->clear();
 
-        Vmcs::destroy(regs.vmcs, pd->quota);
+        Vmcs_state::destroy(regs.vmcs_state, pd->quota);
+
     } else if (Hip::feature() & Hip::FEAT_SVM)
         Vmcb::destroy(regs.vmcb, pd->quota);
 }
@@ -269,7 +273,7 @@ void Ec::handle_hazard (mword hzd, void (*func)())
         current->regs.clr_hazard (HZD_TSC);
 
         if (func == ret_user_vmresume) {
-            current->regs.vmcs->make_current();
+            current->regs.vmcs_state->make_current();
             Vmcs::write (Vmcs::TSC_OFFSET,    static_cast<mword>(current->regs.tsc_offset));
             Vmcs::write (Vmcs::TSC_OFFSET_HI, static_cast<mword>(current->regs.tsc_offset >> 32));
         } else
@@ -346,7 +350,7 @@ void Ec::ret_user_vmresume()
     if (EXPECT_FALSE (hzd))
         handle_hazard (hzd, ret_user_vmresume);
 
-    current->regs.vmcs->make_current();
+    current->regs.vmcs_state->make_current();
 
     if (EXPECT_FALSE (Pd::current->gtlb.chk (Cpu::id))) {
         Pd::current->gtlb.clr (Cpu::id);

@@ -156,7 +156,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static inline void destroy (Ec *obj, Pd &pd) { obj->~Ec(); pd.ec_cache.free (obj, pd.quota); }
 
         ALWAYS_INLINE
-        inline bool idle_ec() { return !utcb && !regs.vmcb && !regs.vmcs && !regs.vtlb; }
+        inline bool idle_ec() { return !utcb && !regs.vmcb && !regs.vmcs_state && !regs.vtlb; }
 
         static void free (Rcu_elem * a)
         {
@@ -306,8 +306,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
             if (!Cpu::feature (Cpu::FEAT_RDTSCP))
                 return;
 
-            bool const current_is_vm = (current->regs.vmcb || current->regs.vmcs);
-            bool const next_is_vm    = (this->regs.vmcb    || this->regs.vmcs);
+            bool const current_is_vm = (current->regs.vmcb || current->regs.vmcs_state);
+            bool const next_is_vm    = (this->regs.vmcb    || this->regs.vmcs_state);
 
             if (!current_is_vm && !next_is_vm)
                 return;
