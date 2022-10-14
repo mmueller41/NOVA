@@ -24,6 +24,8 @@
 #include "atomic.hpp"
 #include "config.hpp"
 #include "extern.hpp"
+#include "stdio.hpp"
+#include "cmdline.hpp"
 
 class Hip_cpu
 {
@@ -39,6 +41,7 @@ class Hip_cpu
         uint8   platform:3;
         uint8   reserved:1;
         uint32  patch;
+        uint8   numa_id;
 } PACKED;
 
 class Hip_mem
@@ -58,6 +61,7 @@ class Hip_mem
         uint64  size;
         uint32  type;
         uint32  aux;
+        uint32  domain; // NUMA domain this memory region belongs to
 };
 
 class Hip
@@ -65,7 +69,9 @@ class Hip
     private:
         uint32  signature;              // 0x0
         uint16  checksum;               // 0x4
+    public:
         uint16  length;                 // 0x6
+    private:
         uint16  cpu_offs;               // 0x8
         uint16  cpu_size;               // 0xa
         uint16  mem_offs;               // 0xc
@@ -81,9 +87,11 @@ class Hip
         uint32  freq_tsc;               // 0x30
         uint32  reserved;               // 0x34
         Hip_cpu cpu_desc[NUM_CPU];
-        Hip_mem mem_desc[];
+  
 
     public:
+        Hip_mem mem_desc[];
+
         enum Feature {
             FEAT_IOMMU  = 1U << 0,
             FEAT_VMX    = 1U << 1,
@@ -138,7 +146,25 @@ class Hip
 
         template <typename T>
         INIT
-        static void add_mem (Hip_mem *&, T const *);
+        static void add_mem (Hip_mem *&mem, T const *map, uint32 domain=0) {
+            mem->addr = map->addr;
+            mem->size = map->len;
+            mem->type = map->type;
+            mem->domain = domain;
+            mem->aux = 0;
+
+            trace(TRACE_CPU, "HIP: Added memory range %llx size: %llx numa node: %d", mem->addr, mem->size, mem->domain);
+
+            if (Cmdline::logmem && !PAGE_L &&
+                mem->size >= 2 * PAGE_SIZE &&
+                mem->addr + mem->size < ~0U)
+            {
+                PAGE_L     = static_cast<mword>(((mem->addr + mem->size) & ~(0xFFFUL)) - PAGE_SIZE);
+                mem->size -= ((mem->addr + mem->size) & (0xFFFUL)) + PAGE_SIZE;
+            }
+
+            mem++;
+        }
 
         template <typename T>
         INIT
