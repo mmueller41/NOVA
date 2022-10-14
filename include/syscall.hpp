@@ -312,6 +312,15 @@ class Sys_assign_gsi : public Sys_regs
         inline mword si() const { return ARG_4; }
 
         ALWAYS_INLINE
+        inline bool cfg() const { return flags() & 0b100; }
+
+        ALWAYS_INLINE
+        inline bool trg() const { return flags() & 0b010; }
+
+        ALWAYS_INLINE
+        inline bool pol() const { return flags() & 0b001; }
+
+        ALWAYS_INLINE
         inline void set_msi (uint64 val)
         {
             ARG_2 = static_cast<mword>(val >> 32);

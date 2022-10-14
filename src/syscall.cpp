@@ -505,7 +505,7 @@ void Ec::sys_create_sc()
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
-    if (EXPECT_FALSE (!r->qpd().prio() || !r->qpd().quantum() | (r->qpd().prio() >= Sc::priorities))) {
+    if (EXPECT_FALSE (!r->qpd().prio() || !r->qpd().quantum() || (r->qpd().prio() >= Sc::priorities))) {
         trace (TRACE_ERROR, "%s: Invalid QPD", __func__);
         sys_finish<Sys_regs::BAD_PAR>();
     }
@@ -1088,9 +1088,24 @@ void Ec::sys_assign_gsi()
     }
 
     Paddr phys; unsigned rid = 0, gsi = static_cast<unsigned>(sm->node_base - NUM_CPU);
+
+     /*
+      * On Genode: If r->dev() != 0 (device virtual address of config space),
+      * assume MSI is wanted. If there is already a GSI at requested location
+      * set error and leave.
+      */
+    if (EXPECT_FALSE (Gsi::gsi_table[gsi].ioapic && r->dev())) {
+        sys_finish<Sys_regs::BAD_DEV>();
+    }
+
     if (EXPECT_FALSE (!Gsi::gsi_table[gsi].ioapic && (!Pd::current->Space_mem::lookup (r->dev(), phys) || ((rid = Pci::phys_to_rid (phys)) == ~0U && (rid = Hpet::phys_to_rid (phys)) == ~0U)))) {
         trace (TRACE_ERROR, "%s: Non-DEV CAP (%#lx)", __func__, r->dev());
         sys_finish<Sys_regs::BAD_DEV>();
+    }
+
+    if (r->cfg()) {
+        Gsi::gsi_table[gsi].trg = r->trg();
+        Gsi::gsi_table[gsi].pol = r->pol();
     }
 
     r->set_msi (Gsi::set (gsi, r->cpu(), rid));

@@ -210,6 +210,12 @@ class Cpu
         }
 
         ALWAYS_INLINE
+        static inline void preemption_point()
+        {
+            asm volatile ("sti; nop; cli" : : : "memory");
+        }
+
+        ALWAYS_INLINE
         static inline void cpuid (unsigned leaf, uint32 &eax, uint32 &ebx, uint32 &ecx, uint32 &edx)
         {
             asm volatile ("cpuid" : "=a" (eax), "=b" (ebx), "=c" (ecx), "=d" (edx) : "a" (leaf));

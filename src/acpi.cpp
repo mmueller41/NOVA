@@ -97,7 +97,7 @@ void Acpi::setup()
         Acpi_table_madt::parse_intr (&sci_override);
     }
 
-    Gsi::set (gsi = Gsi::irq_to_gsi (irq));
+    gsi = Gsi::irq_to_gsi (irq);
 
     clear (GPE0_ENA, 0);
     clear (GPE1_ENA, 0);
