@@ -95,7 +95,8 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
         if (Hip::feature() & Hip::FEAT_VMX) {
             mword host_cr3 = pd->loc[c].root(pd->quota) | (Cpu::feature (Cpu::FEAT_PCID) ? pd->did : 0);
 
-            auto vmcs = new (pd->quota) Vmcs (reinterpret_cast<mword>(sys_regs() + 1),
+            auto vmcs = new (pd->quota) Vmcs (pd->quota,
+                                              reinterpret_cast<mword>(sys_regs() + 1),
                                               pd->Space_pio::walk(pd->quota),
                                               host_cr3,
                                               pd->ept.root(pd->quota));
@@ -104,22 +105,6 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
             regs.vmcs_state->make_current();
 
             regs.nst_ctrl<Vmcs>();
-
-            /* allocate and register the host MSR area */
-            mword host_msr_area_phys = Buddy::ptr_to_phys(new (pd->quota) Msr_area);
-            Vmcs::write(Vmcs::EXI_MSR_LD_ADDR, host_msr_area_phys);
-            Vmcs::write(Vmcs::EXI_MSR_LD_CNT, Msr_area::MSR_COUNT);
-
-            /* allocate and register the guest MSR area */
-            mword guest_msr_area_phys = Buddy::ptr_to_phys(new (pd->quota) Msr_area);
-            Vmcs::write(Vmcs::ENT_MSR_LD_ADDR, guest_msr_area_phys);
-            Vmcs::write(Vmcs::ENT_MSR_LD_CNT, Msr_area::MSR_COUNT);
-            Vmcs::write(Vmcs::EXI_MSR_ST_ADDR, guest_msr_area_phys);
-            Vmcs::write(Vmcs::EXI_MSR_ST_CNT, Msr_area::MSR_COUNT);
-
-            /* allocate and register the virtual APIC page */
-            mword virtual_apic_page_phys = Buddy::ptr_to_phys(new (pd->quota) Virtual_apic_page);
-            Vmcs::write(Vmcs::APIC_VIRT_ADDR, virtual_apic_page_phys);
 
             regs.vmcs_state->clear();
             cont = send_msg<ret_user_vmresume>;
@@ -209,28 +194,10 @@ Ec::~Ec()
     /* vCPU cleanup */
     Vtlb::destroy(regs.vtlb, pd->quota);
 
-    if (Hip::feature() & Hip::FEAT_VMX) {
-
-        regs.vmcs_state->make_current();
-
-        mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
-        Msr_area *host_msr_area = reinterpret_cast<Msr_area*>(Buddy::phys_to_ptr(host_msr_area_phys));
-        Msr_area::destroy(host_msr_area, pd->quota);
-
-        mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
-        Msr_area *guest_msr_area = reinterpret_cast<Msr_area*>(Buddy::phys_to_ptr(guest_msr_area_phys));
-        Msr_area::destroy(guest_msr_area, pd->quota);
-
-        mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
-        Virtual_apic_page *virtual_apic_page =
-            reinterpret_cast<Virtual_apic_page*>(Buddy::phys_to_ptr(virtual_apic_page_phys));
-        Virtual_apic_page::destroy(virtual_apic_page, pd->quota);
-
-        regs.vmcs_state->clear();
-
+    if (Hip::feature() & Hip::FEAT_VMX)
         Vmcs_state::destroy(regs.vmcs_state, pd->quota);
-
-    } else if (Hip::feature() & Hip::FEAT_SVM)
+    else
+    if (Hip::feature() & Hip::FEAT_SVM)
         Vmcb_state::destroy(regs.vmcb_state, pd->quota);
 }
 

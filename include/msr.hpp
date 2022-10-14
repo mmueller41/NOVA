@@ -145,6 +145,8 @@ class Msr
             IA32_LSTAR              = 0xc0000082,
             IA32_CSTAR              = 0xc0000083,
             IA32_SFMASK             = 0xc0000084,
+            IA32_FS_BASE            = 0xc0000100,
+            IA32_GS_BASE            = 0xc0000101,
             IA32_KERNEL_GS_BASE     = 0xc0000102,
             IA32_TSC_AUX            = 0xc0000103,
 

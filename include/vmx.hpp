@@ -299,6 +299,7 @@ class Vmcs
             CPU_NMI_WINDOW          = 1ul << 22,
             CPU_IO                  = 1ul << 24,
             CPU_IO_BITMAP           = 1ul << 25,
+            CPU_MSR_BITMAP          = 1ul << 28,
             CPU_SECONDARY           = 1ul << 31,
         };
 
@@ -377,7 +378,7 @@ class Vmcs
             Buddy::allocator.free (reinterpret_cast<mword>(obj), quota);
         }
 
-        Vmcs (mword, mword, mword, uint64);
+        Vmcs (Quota &, mword, mword, mword, uint64);
 
         ALWAYS_INLINE
         inline Vmcs() : rev (basic.revision) { }
@@ -460,11 +461,13 @@ class Vmcs
             return has_vpid() ? read (VPID) : 0;
         }
 
-        static bool has_secondary() { return ctrl_cpu[0].clr & CPU_SECONDARY; }
-        static bool has_ept()       { return ctrl_cpu[1].clr & CPU_EPT; }
-        static bool has_vpid()      { return ctrl_cpu[1].clr & CPU_VPID; }
-        static bool has_urg()       { return ctrl_cpu[1].clr & CPU_URG; }
-        static bool has_vnmi()      { return ctrl_pin.clr & PIN_VIRT_NMI; }
+        static bool has_msr_bitmap() { return ctrl_cpu[0].clr & CPU_MSR_BITMAP; }
+        static bool use_msr_bitmap() { return has_msr_bitmap(); }
+        static bool has_secondary()  { return ctrl_cpu[0].clr & CPU_SECONDARY; }
+        static bool has_ept()        { return ctrl_cpu[1].clr & CPU_EPT; }
+        static bool has_vpid()       { return ctrl_cpu[1].clr & CPU_VPID; }
+        static bool has_urg()        { return ctrl_cpu[1].clr & CPU_URG; }
+        static bool has_vnmi()       { return ctrl_pin.clr & PIN_VIRT_NMI; }
 
         static void init();
 };
@@ -500,6 +503,44 @@ struct Msr_area
     static inline void destroy(Msr_area *obj, Quota &quota)
     {
         Buddy::allocator.free (reinterpret_cast<mword>(obj), quota);
+    }
+};
+
+struct Msr_bitmap
+{
+    uint8 bitmap[4096];
+
+    ALWAYS_INLINE
+    static inline void *operator new (size_t, Quota &quota)
+    {
+        /* allocate one page and set all bits */
+        return Buddy::allocator.alloc(0, quota, Buddy::FILL_1);
+    }
+
+    ALWAYS_INLINE
+    static inline void destroy(Msr_bitmap *obj, Quota &quota)
+    {
+        Buddy::allocator.free(reinterpret_cast<mword>(obj), quota);
+    }
+
+    void disable_msr_exit(Msr::Register const & reg)
+    {
+        auto const valid_range = reg & 0x1ffffu;
+        auto const index       = valid_range / 8;
+        auto const bit         = valid_range % 8;
+        auto const mask        = uint8(~(1u << bit));
+
+        switch (unsigned(reg)) {
+        case 0x0000'0000 ... 0x0000'1fff:
+            bitmap[index +    0] &= mask; /* read  */
+            bitmap[index + 2048] &= mask; /* write */
+            break;
+        case 0xc000'0000 ... 0xc000'1fff:
+            bitmap[index + 1024] &= mask; /* read  */
+            bitmap[index + 3072] &= mask; /* write */
+        default:
+            return;
+        }
     }
 };
 
@@ -565,16 +606,7 @@ class Vmcs_state
             queue.for_each([](auto &vmcs) { vmcs.clear(); });
         }
 
-        static void destroy(Vmcs_state * const remove, Quota &quota)
-        {
-            if (!remove)
-                return;
-
-            Vmcs::destroy(&remove->vmcs, quota);
-
-            remove->~Vmcs_state();
-            cache.free (remove, quota);
-        }
+        static void destroy(Vmcs_state *, Quota &);
 
         ALWAYS_INLINE
         inline void make_current()

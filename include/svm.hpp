@@ -126,13 +126,7 @@ union {
             return Buddy::allocator.alloc (0, quota, Buddy::FILL_0);
         }
 
-        ALWAYS_INLINE
-        static inline void destroy(Vmcb *obj, Quota &quota)
-        {
-            Buddy::allocator.free (reinterpret_cast<mword>(Buddy::phys_to_ptr(static_cast<Paddr>(obj->base_msr))), quota);
-            obj->~Vmcb();
-            Buddy::allocator.free (reinterpret_cast<mword>(obj), quota);
-        }
+        static void destroy(Vmcb &, Quota &);
 
         Vmcb (Quota &quota, mword, mword, unsigned);
 
@@ -206,7 +200,7 @@ class Vmcb_state
             if (!remove)
                 return;
 
-            Vmcb::destroy(&remove->vmcb, quota);
+            Vmcb::destroy(remove->vmcb, quota);
 
             remove->~Vmcb_state();
             cache.free (remove, quota);

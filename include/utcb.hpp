@@ -149,7 +149,7 @@ class Utcb : public Utcb_head, private Utcb_data
         {
             mword const write_bit = 29;
             bool  const extra_inc = (sizeof(mword) == 4);
-            mword const max       = min(ui(), sizeof(mword) * 8 - 1);
+            mword const max       = min(ui(), mword(sizeof(mword) * 8 - 1));
 
             unsigned id_op   = 0;
             mword    success = 0;
