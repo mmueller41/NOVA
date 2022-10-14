@@ -48,6 +48,7 @@ mword       Cpu::boot_lock;
 unsigned    Cpu::online;
 uint8       Cpu::acpi_id[NUM_CPU];
 uint8       Cpu::apic_id[NUM_CPU];
+uint8       Cpu::numa_id[NUM_CPU];
 
 unsigned    Cpu::id;
 unsigned    Cpu::hazard;
@@ -274,7 +275,7 @@ void Cpu::init()
 
     Mca::init();
 
-    trace (TRACE_CPU, "CORE:%x:%x:%x %x:%x:%x:%x [%x] %.48s", package[Cpu::id], core[Cpu::id], thread[Cpu::id], family[Cpu::id], model[Cpu::id], stepping[Cpu::id], platform[Cpu::id], patch[Cpu::id], reinterpret_cast<char *>(name));
+    trace (TRACE_CPU, "CORE:%x:%x:%x:%x %x:%x:%x:%x [%x] %.48s", package[Cpu::id], numa_id[Cpu::id], core[Cpu::id], thread[Cpu::id], family[Cpu::id], model[Cpu::id], stepping[Cpu::id], platform[Cpu::id], patch[Cpu::id], reinterpret_cast<char *>(name));
 
     Hip::add_cpu();
 

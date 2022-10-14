@@ -146,6 +146,7 @@ class Cpu
         static unsigned online;
         static uint8    acpi_id[NUM_CPU];
         static uint8    apic_id[NUM_CPU];
+        static uint8    numa_id[NUM_CPU];
 
         static uint8    package[NUM_CPU];
         static uint8    core[NUM_CPU];
