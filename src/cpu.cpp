@@ -240,6 +240,12 @@ void Cpu::init()
 
     Lapic::init_cpuid();
 
+    /* handle case running on machine with too many CPUs */
+    if (id >= NUM_CPU) {
+        boot_lock++;
+        shutdown();
+    }
+
     // Initialize CPU number and check features
     check_features();
 
