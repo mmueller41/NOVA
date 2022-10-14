@@ -26,11 +26,13 @@
 #include "lapic.hpp"
 #include "multiboot.hpp"
 #include "multiboot2.hpp"
+#include "acpi_srat.hpp"
 #include "space_obj.hpp"
 #include "pd.hpp"
 #include "acpi_rsdp.hpp"
 #include "acpi.hpp"
 #include "string.hpp"
+#include "stdio.hpp"
 
 extern char _mempool_e;
 
@@ -181,25 +183,6 @@ void Hip::add_mod(Hip_mem *&mem, T const * mod, uint32 aux)
     mem++;
 }
 
-template<typename T>
-void Hip::add_mem (Hip_mem *&mem, T const *map)
-{
-    mem->addr = map->addr;
-    mem->size = map->len;
-    mem->type = map->type;
-    mem->aux  = 0;
-
-    if (Cmdline::logmem && !PAGE_L &&
-        mem->size >= 2 * PAGE_SIZE &&
-        mem->addr + mem->size < ~0U)
-    {
-        PAGE_L     = static_cast<mword>(((mem->addr + mem->size) & ~(0xFFFUL)) - PAGE_SIZE);
-        mem->size -= ((mem->addr + mem->size) & (0xFFFUL)) + PAGE_SIZE;
-    }
-
-    mem++;
-}
-
 void Hip::add_mhv (Hip_mem *&mem)
 {
     mem->addr = reinterpret_cast<mword>(&LINK_P);
@@ -222,6 +205,7 @@ void Hip::add_cpu()
     cpu->stepping = Cpu::stepping[Cpu::id] & 0xf;
     cpu->platform = Cpu::platform[Cpu::id] & 0x7;
     cpu->patch    = Cpu::patch[Cpu::id];
+    cpu->numa_id  = Cpu::numa_id[Cpu::id];
 }
 
 void Hip::add_check()
