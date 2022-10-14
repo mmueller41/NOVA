@@ -22,7 +22,9 @@
  */
 
 #include "acpi_srat.hpp"
+#include "hip.hpp"
 #include "stdio.hpp"
+#include "config.hpp"
 
 void Acpi_table_srat::parse() const
 {
@@ -50,6 +52,12 @@ void Acpi_table_srat::parse_lapic(Acpi_srat_entry const *ptr)
                                         static_cast<uint32>(p->domain_hi[2]) << 24);
 
         trace(TRACE_ACPI, "CPU %u - NUMA region %u", p->apic_id, numa_id);
+        for (size_t id = 0; id < NUM_CPU; id++) {
+            if (Cpu::apic_id[id] == p->apic_id) {
+                Cpu::numa_id[id] = static_cast<uint8>(numa_id);
+                break;
+            }
+        }
     }
 
     // TODO: Use this information, i.e. save it in the resource model
@@ -58,6 +66,10 @@ void Acpi_table_srat::parse_lapic(Acpi_srat_entry const *ptr)
 void Acpi_table_srat::parse_mas(Acpi_srat_entry const *ptr)
 {
     Acpi_srat_memtry const *p = static_cast<Acpi_srat_memtry const *>(ptr);
+    bool new_chunk = true;
+    bool replaced_chunk = false;
+    Hip *hip = Hip::hip();
+    Hip_mem *mem = reinterpret_cast<Hip_mem*>(reinterpret_cast<mword>(hip)+hip->length);
 
     if (p->flag_enabled) {
         uint32 numa_id = p->domain;
@@ -68,7 +80,46 @@ void Acpi_table_srat::parse_mas(Acpi_srat_entry const *ptr)
         if (p->flag_nvm) {
             trace(TRACE_ACPI, "MEM range %lx -- %lx -> NUMA node %d is non-volatile", start, (start + size), numa_id);
         } else {
-            trace(TRACE_ACPI, "MEM range %lx -- %lx -> NUMA node %d is regular", start, (start + size), numa_id);
+            trace(TRACE_CPU, "HIP mem entries end at %lx", reinterpret_cast<mword>(mem));
+
+            for (Hip_mem *md = hip->mem_desc; md <= mem; md++)
+            {
+                if (start >= md->addr && start < (md->addr + md->size) && md->size <= size)
+                {
+                    trace(TRACE_ACPI, "mem=%p, Skipped memory region %lx of size %lx", md, start, size);
+                    new_chunk = false;
+                    continue;
+                }
+
+                if (md->type == Hip_mem::HYPERVISOR) {
+                    trace(TRACE_ACPI, "mem=%p, Skipped memory region %llx of size %llx: is hypervisor memory.", md, md->addr, md->size);
+                    continue;
+                }
+
+                /* If we find a memory chunk in the SRAT that is smaller than previousliy reported by multiboot,
+                 * then overwrite the memory descriptor for it with the values from SRAT.
+                */ 
+                if (start >= md->addr && start < (md->addr + md->size) && size <= md->size && md->type != Hip_mem::HYPERVISOR)
+                {
+                    if (start == md->addr && size == md->size) // memory chunk already registered
+                        break;
+
+                    mem = md;
+                    trace(TRACE_ACPI, "mem=%p: Replaced memory region %llx of size %llx with region %lx of size %lx", mem, md->addr, md->size, start, size);
+                    new_chunk = true;
+                    replaced_chunk = true;
+                    break;
+                }
+            }
+            if (new_chunk) {
+                struct Acpi_srat_hip_mem block { start, size, 1 };
+                Hip::add_mem(mem, &block, numa_id);
+                trace(TRACE_ACPI, "mem=%p: MEM range %llx -- %llx -> NUMA node %d is regular", mem, block.addr, (block.addr + size), numa_id);
+                if (!replaced_chunk) { 
+                    //Hip::add_mhv(mem);
+                    hip->length = static_cast<uint16>(reinterpret_cast<mword>(mem) - reinterpret_cast<mword>(hip));
+                }
+            }
         }
     }
 }

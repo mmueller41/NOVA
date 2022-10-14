@@ -156,4 +156,10 @@ class Acpi_table_srat : public Acpi_table
         INIT void parse() const;
 };
 
+struct Acpi_srat_hip_mem {
+    uint64 addr;
+    uint64 len;
+    uint32 type;
+};
+
 #pragma pack()
