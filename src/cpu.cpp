@@ -246,6 +246,18 @@ void Cpu::init()
         shutdown();
     }
 
+    /*
+     * hwdev_addr is decremented by PCI & IOAPIC & IOMMU objects and
+     * moves towards HV_GLOBAL_CPUS. If intersection happens we will run into
+     * corruption issues, so detect the case and stop early.
+     */
+    if (hwdev_addr < HV_GLOBAL_CPUS + NUM_CPU * PAGE_SIZE) {
+        trace (0, "Too many CPUS and PCI & IOAPIC & IOMMU devices");
+        shutdown();
+    }
+
+    static_assert (HV_GLOBAL_MAX / PAGE_SIZE >= NUM_CPU, "Too many CPUs configured");
+
     // Initialize CPU number and check features
     check_features();
 
