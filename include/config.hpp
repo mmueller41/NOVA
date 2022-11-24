@@ -21,7 +21,7 @@
 
 #pragma once
 
-#define CFG_VER         8
+#define CFG_VER         9
 
 #define NUM_CPU         64
 #define NUM_IRQ         16

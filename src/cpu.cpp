@@ -60,6 +60,7 @@ uint8       Cpu::platform[NUM_CPU];
 uint8       Cpu::family[NUM_CPU];
 uint8       Cpu::model[NUM_CPU];
 uint8       Cpu::stepping[NUM_CPU];
+uint8       Cpu::core_type[NUM_CPU];
 unsigned    Cpu::brand;
 unsigned    Cpu::patch[NUM_CPU];
 unsigned    Cpu::row;
@@ -99,8 +100,13 @@ void Cpu::check_features()
     }
 
     switch (static_cast<uint8>(eax)) {
+        case 0x1a ... 0xff:
+            cpuid (0x1a, 0, eax, ebx, ecx, edx);
+            core_type[Cpu::id] = uint8((eax >> 24) & 0xffu);
+            [[fallthrough]];
         default:
             cpuid (0x7, 0, eax, features[3], ecx, edx);
+            /* hybrid flag (edx & (1u << 15)) */
             [[fallthrough]];
         case 0x6:
             cpuid (0x6, features[2], ebx, ecx, edx);
@@ -296,7 +302,13 @@ void Cpu::init(bool resume)
 
     Mca::init();
 
-    trace (TRACE_CPU, "CORE:%x:%x:%x %x:%x:%x:%x [%x] %.48s", package[Cpu::id], core[Cpu::id], thread[Cpu::id], family[Cpu::id], model[Cpu::id], stepping[Cpu::id], platform[Cpu::id], patch[Cpu::id], reinterpret_cast<char *>(name));
+    trace (TRACE_CPU, "CORE:%02x:%02x:%x %x:%x:%x:%x [%x] %s%.48s",
+           package[Cpu::id], core[Cpu::id], thread[Cpu::id], family[Cpu::id],
+           model[Cpu::id], stepping[Cpu::id], platform[Cpu::id], patch[Cpu::id],
+           core_type[Cpu::id] == 0x00 ? ""   :
+           core_type[Cpu::id] == Cpu::INTEL_CORE ? "P " :
+           core_type[Cpu::id] == Cpu::INTEL_ATOM ? "E " : "? ",
+           reinterpret_cast<char *>(name));
 
     if (!resume)
         Hip::add_cpu();

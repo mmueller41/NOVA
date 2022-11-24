@@ -52,6 +52,12 @@ class Cpu
             AMD
         };
 
+        enum Core_type
+        {
+            INTEL_ATOM = 0x20,
+            INTEL_CORE = 0x40,
+        };
+
         enum Feature
         {
             FEAT_MCE            =  7,
@@ -154,6 +160,7 @@ class Cpu
         static uint8    family[NUM_CPU];
         static uint8    model[NUM_CPU];
         static uint8    stepping[NUM_CPU];
+        static uint8    core_type[NUM_CPU];
         static unsigned patch[NUM_CPU];
 
         static unsigned id                  CPULOCAL_HOT;
