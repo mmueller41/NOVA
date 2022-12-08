@@ -44,15 +44,15 @@ void bootstrap()
         });
     }
 
-    Msr::write<uint64>(Msr::IA32_TSC, Acpi::resume_time);
-
     Cpu::init(resumed);
 
     if (resumed) {
-        Timeout::sync();
-
         // Barrier: wait for all ECs to arrive here
         for (Atomic::add (barrier, 1UL); barrier != Cpu::online; pause()) ;
+
+        Msr::write<uint64>(Msr::IA32_TSC, Acpi::resume_time);
+
+        Timeout::sync();
 
         Sc::schedule();
     }
@@ -67,6 +67,8 @@ void bootstrap()
 
     // Barrier: wait for all ECs to arrive here
     for (Atomic::add (barrier, 1UL); barrier != Cpu::online; pause()) ;
+
+    Msr::write<uint64>(Msr::IA32_TSC, 0);
 
     // Create root task
     if (Cpu::bsp) {
