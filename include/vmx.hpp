@@ -22,14 +22,21 @@
 
 #include "assert.hpp"
 #include "msr.hpp"
+#include "slab.hpp"
+#include "queue.hpp"
+
+class Vmcs_state;
 
 class Vmcs
 {
-    public:
+    friend Vmcs_state;
+
+    private:
         uint32  rev;
         uint32  abort { 0 };
 
         static Vmcs *current CPULOCAL_HOT;
+        static Vmcs *root    CPULOCAL;
 
         static unsigned vpid_ctr CPULOCAL;
 
@@ -65,6 +72,8 @@ class Vmcs
                 uint32  set, clr;
             };
         } ctrl_pin CPULOCAL;
+
+    public:
 
         static union vmx_ctrl_cpu {
             uint64      val;
@@ -371,12 +380,25 @@ class Vmcs
         Vmcs (mword, mword, mword, uint64);
 
         ALWAYS_INLINE
-        inline Vmcs() : rev (basic.revision)
+        inline Vmcs() : rev (basic.revision) { }
+
+    private:
+
+        ALWAYS_INLINE
+        void vmxon()
         {
             uint64 phys = Buddy::ptr_to_phys (this);
 
             bool ret;
-            asm volatile ("vmxon %1; seta %0" : "=q" (ret) : "m" (phys) : "cc");
+            asm volatile ("vmxon %1" : "=@cca" (ret) : "m" (phys) : "cc");
+            assert (ret);
+        }
+
+        ALWAYS_INLINE
+        static void vmxoff()
+        {
+            bool ret;
+            asm volatile ("vmxoff" : "=@cca" (ret) :: "cc");
             assert (ret);
         }
 
@@ -405,6 +427,8 @@ class Vmcs
             asm volatile ("vmptrld %1; seta %0" : "=q" (ret) : "m" (phys) : "cc");
             assert (ret);
         }
+
+    public:
 
         ALWAYS_INLINE
         static inline mword read (Encoding enc)
@@ -500,4 +524,76 @@ struct Virtual_apic_page
 
     uint32 vtpr() { return data[VTPR]; }
     void vtpr(uint32 value) { data[VTPR] = value; }
+};
+
+class Vmcs_state
+{
+    friend class Queue<Vmcs_state>;
+
+    private:
+
+        static Slab_cache cache;
+
+        Vmcs &vmcs;
+
+        bool active { };
+
+        static Queue<Vmcs_state> queue CPULOCAL;
+
+        Vmcs_state *prev { nullptr }, *next { nullptr };
+
+        Vmcs_state(const Vmcs_state&);
+        Vmcs_state &operator = (Vmcs_state const &);
+
+    public:
+
+        ALWAYS_INLINE
+        static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
+
+        Vmcs_state(Vmcs &v) : vmcs(v)
+        {
+            queue.enqueue(this);
+        }
+
+        ~Vmcs_state()
+        {
+            queue.dequeue(this);
+        }
+
+        static void flush_all_vmcs()
+        {
+            queue.for_each([](auto &vmcs) { vmcs.clear(); });
+        }
+
+        static void destroy(Vmcs_state * const remove, Quota &quota)
+        {
+            if (!remove)
+                return;
+
+            Vmcs::destroy(&remove->vmcs, quota);
+
+            remove->~Vmcs_state();
+            cache.free (remove, quota);
+        }
+
+        ALWAYS_INLINE
+        inline void make_current()
+        {
+            vmcs.make_current();
+
+            active = true;
+        }
+
+        ALWAYS_INLINE
+        inline void clear()
+        {
+            if (!active)
+                return;
+
+            vmcs.clear();
+
+            active = false;
+        }
+
+        ALWAYS_INLINE static inline void vmxoff() { Vmcs::vmxoff(); }
 };

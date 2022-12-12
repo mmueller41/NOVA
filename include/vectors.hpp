@@ -36,3 +36,8 @@
 #define VEC_IPI_RRQ     (VEC_IPI + 0)
 #define VEC_IPI_RKE     (VEC_IPI + 1)
 #define VEC_IPI_IDL     (VEC_IPI + 2)
+#define VEC_IPI_HLT     (VEC_IPI + 3)
+
+#if (VEC_IPI_HLT - VEC_IPI + 1 != NUM_IPI)
+#error "IPI misonfiguration"
+#endif

@@ -48,7 +48,8 @@ class Console_serial : public Console
         ALWAYS_INLINE
         inline void out (Register r, unsigned v) { Io::out (base + r, static_cast<uint8>(v)); }
 
-        void putc (int c);
+        void putc (int c) override;
+        void reenable() override;
 
     public:
         INIT

@@ -32,6 +32,11 @@ unsigned    Vmcb::asid_ctr;
 uint32      Vmcb::svm_version;
 uint32      Vmcb::svm_feature;
 
+Queue<Vmcb_state> Vmcb_state::queue;
+
+INIT_PRIORITY (PRIO_SLAB)
+Slab_cache Vmcb_state::cache (sizeof (Vmcb_state), 8);
+
 Vmcb::Vmcb (Quota &quota, mword bmp, mword nptp, unsigned id) : base_io (bmp), asid (id), int_control (1ul << 24), npt_cr3 (nptp), efer (Cpu::EFER_SVME), g_pat (0x7040600070406ull)
 {
     base_msr = Buddy::ptr_to_phys (Buddy::allocator.alloc (1, quota, Buddy::FILL_1));
@@ -48,7 +53,9 @@ void Vmcb::init()
         svm_feature &= ~1;
 
     Msr::write (Msr::IA32_EFER, Msr::read<uint32>(Msr::IA32_EFER) | Cpu::EFER_SVME);
-    Msr::write (Msr::AMD_SVM_HSAVE_PA, root = Buddy::ptr_to_phys (new (Pd::kern.quota) Vmcb(Space_mem::NO_ASID_ID)));
+    if (!root)
+        root = Buddy::ptr_to_phys (new (Pd::kern.quota) Vmcb(Space_mem::NO_ASID_ID));
+    Msr::write (Msr::AMD_SVM_HSAVE_PA, root);
 
     trace (TRACE_SVM, "VMCB:%#010lx REV:%#x NPT:%d", root, svm_version, has_npt());
 }

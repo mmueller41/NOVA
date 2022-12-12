@@ -37,6 +37,16 @@ Console_serial::Console_serial()
         return;*/
     base = 0x3f8; // Use COM2 as default
 
+    reenable();
+
+    enable();
+}
+
+void Console_serial::reenable()
+{
+    if (!base)
+        return;
+
     out (LCR, 0x80);
     out (DLL, (freq / 115200) & 0xff);
     out (DLM, (freq / 115200) >> 8);
@@ -44,8 +54,6 @@ Console_serial::Console_serial()
     out (IER, 0);
     out (FCR, 7);
     out (MCR, 3);
-
-    enable();
 }
 
 void Console_serial::putc (int c)
@@ -53,8 +61,6 @@ void Console_serial::putc (int c)
     if (c == '\n')
         putc ('\r');
 
-    Lapic::pause_loop_until(500, [&] {
-      return (EXPECT_FALSE (!(in (LSR) & 0x20))); });
-
-    out (THR, c);
+    if (Lapic::pause_loop_until(500, [&] { return (EXPECT_FALSE (!(in (LSR) & 0x20))); }))
+        out (THR, c);
 }

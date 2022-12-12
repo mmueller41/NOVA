@@ -26,11 +26,16 @@
 #define NUM_CPU         64
 #define NUM_IRQ         16
 #define NUM_EXC         32
+#define PT_STARTUP      NUM_EXC - 2
+#define PT_RECALL       NUM_EXC - 1
+#define EC_ROOTTASK     NUM_EXC + 1
+#define SC_ROOTTASK     NUM_EXC + 2
+#define SM_ACPI_SUSPEND NUM_EXC + 3
 #define NUM_VMI         256
 #define NUM_GSI         192
 #define NUM_LVT         6
 #define NUM_MSI         1
-#define NUM_IPI         3
+#define NUM_IPI         4
 
 #define SPN_SCH         0
 #define SPN_HLP         1

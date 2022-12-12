@@ -32,6 +32,8 @@
 #include "syscall.hpp"
 #include "utcb.hpp"
 #include "vectors.hpp"
+#include "acpi.hpp"
+#include "ioapic.hpp"
 
 template <Sys_regs::Status S, bool T>
 void Ec::sys_finish()
@@ -663,13 +665,33 @@ void Ec::sys_revoke()
     sys_finish<Sys_regs::SUCCESS>();
 }
 
-void Ec::sys_lookup()
+void Ec::sys_misc()
 {
-    check<sys_lookup>(2);
+    check<sys_misc>(2);
 
-    Sys_lookup *s = static_cast<Sys_lookup *>(current->sys_regs());
+    Sys_misc *s = static_cast<Sys_misc *>(current->sys_regs());
 
-    if (s->flags()) {
+    switch (s->flags()) {
+    case Sys_misc::SYS_ACPI_SUSPEND: {
+
+        Capability cap = Space_obj::lookup (s->pd_snd());
+        if (!Ec::auth_suspend || cap.obj() != Ec::auth_suspend)
+            sys_finish<Sys_regs::BAD_CAP>();
+
+        current->cont = sys_finish<Sys_regs::SUCCESS>;
+
+        Ioapic::for_each([](auto ioapic) {
+            if (!ioapic->suspend(Pd::root.quota))
+                sys_finish<Sys_regs::BAD_PAR>();
+        });
+
+        if (!Acpi::suspend(uint8(s->sleep_type_a()), uint8(s->sleep_type_b())))
+            sys_finish<Sys_regs::BAD_PAR>();
+
+        /* never reached */
+        sys_finish<Sys_regs::BAD_PAR>();
+    }
+    case Sys_misc::SYS_DELEGATE: {
         trace (TRACE_SYSCALL, "EC:%p SYS_DELEGATE PD:%lx->%lx T:%d B:%#lx", current, s->pd_snd(), s->pd_dst(), s->crd().type(), s->crd().base());
 
         Kobject *obj_dst = Space_obj::lookup (s->pd_dst()).obj();
@@ -700,16 +722,20 @@ void Ec::sys_lookup()
 
         sys_finish<Sys_regs::SUCCESS>();
     }
+    case Sys_misc::SYS_LOOKUP: {
+        trace (TRACE_SYSCALL, "EC:%p SYS_LOOKUP T:%d B:%#lx", current, s->crd().type(), s->crd().base());
 
-    trace (TRACE_SYSCALL, "EC:%p SYS_LOOKUP T:%d B:%#lx", current, s->crd().type(), s->crd().base());
+        Space *space; Mdb *mdb;
+        if ((space = Pd::current->subspace (s->crd().type())) && (mdb = space->tree_lookup (s->crd().base())))
+            s->crd() = Crd (s->crd().type(), mdb->node_base, mdb->node_order, mdb->node_attr);
+        else
+            s->crd() = Crd (0);
 
-    Space *space; Mdb *mdb;
-    if ((space = Pd::current->subspace (s->crd().type())) && (mdb = space->tree_lookup (s->crd().base())))
-        s->crd() = Crd (s->crd().type(), mdb->node_base, mdb->node_order, mdb->node_attr);
-    else
-        s->crd() = Crd (0);
-
-    sys_finish<Sys_regs::SUCCESS>();
+        sys_finish<Sys_regs::SUCCESS>();
+    }
+    default:
+        sys_finish<Sys_regs::BAD_PAR>();
+    }
 }
 
 void Ec::sys_ec_ctrl()
@@ -1171,7 +1197,7 @@ void (*const syscall[])() =
     &Ec::sys_create_pt,
     &Ec::sys_create_sm,
     &Ec::sys_revoke,
-    &Ec::sys_lookup,
+    &Ec::sys_misc,
     &Ec::sys_ec_ctrl,
     &Ec::sys_sc_ctrl,
     &Ec::sys_pt_ctrl,

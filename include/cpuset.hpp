@@ -5,6 +5,7 @@
  * Economic rights: Technische Universitaet Dresden (Germany)
  *
  * Copyright (C) 2012 Udo Steinberg, Intel Corporation.
+ * Copyright (C) 2012 Alexander Boettcher, Genode Labs GmbH.
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -26,21 +27,51 @@
 class Cpuset
 {
     private:
-        mword val;
+
+        enum { CPUS_PER_VALUE = sizeof(mword) * 8 };
+
+        static_assert (NUM_CPU > 0, "Pointless CPU configuration");
+
+        mword raw [1 + (NUM_CPU - 1) / CPUS_PER_VALUE] { };
+
+        ALWAYS_INLINE
+        inline mword & value(unsigned const cpu) {
+            return raw[cpu / CPUS_PER_VALUE]; }
+
+        ALWAYS_INLINE
+        inline mword const & value(unsigned const cpu) const {
+            return raw[cpu / CPUS_PER_VALUE]; }
+
+        ALWAYS_INLINE
+        inline mword bit_cpu(unsigned const cpu) const {
+            return cpu % CPUS_PER_VALUE; }
 
     public:
-        ALWAYS_INLINE
-        inline explicit Cpuset(mword v) : val (v) {}
 
         ALWAYS_INLINE
-        inline bool chk (unsigned cpu) const { return val & 1UL << cpu; }
+        inline explicit Cpuset(mword const v)
+        {
+            for (unsigned i = 0; i < sizeof(raw) / sizeof(raw[0]); i++)
+                raw[i] = v;
+        }
 
         ALWAYS_INLINE
-        inline bool set (unsigned cpu) { return !Atomic::test_set_bit (val, cpu); }
+        inline bool chk (unsigned const cpu) const {
+            return value(cpu) & (1UL << bit_cpu(cpu)); }
 
         ALWAYS_INLINE
-        inline void clr (unsigned cpu) { Atomic::clr_mask (val, 1UL << cpu); }
+        inline bool set (unsigned const cpu) {
+            return !Atomic::test_set_bit (value(cpu), bit_cpu(cpu)); }
 
         ALWAYS_INLINE
-        inline void merge (Cpuset &s) { Atomic::set_mask (val, s.val); }
+        inline void clr (unsigned const cpu) {
+            Atomic::clr_mask (value(cpu), 1UL << bit_cpu(cpu)); }
+
+        ALWAYS_INLINE
+        inline void merge (Cpuset const &s)
+        {
+            for (unsigned i = 0; i < sizeof(raw) / sizeof(raw[0]); i++)
+                Atomic::set_mask (  value(i * CPUS_PER_VALUE),
+                                  s.value(i * CPUS_PER_VALUE));
+        }
 };

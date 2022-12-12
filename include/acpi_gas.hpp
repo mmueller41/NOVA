@@ -38,6 +38,8 @@ class Acpi_gas
         uint8   access;     // Access Size
         uint64  addr;       // Register Address
 
+        inline bool valid() const { return bits; }
+
         enum Asid
         {
             MEMORY      = 0x0,

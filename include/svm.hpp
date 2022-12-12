@@ -20,7 +20,9 @@
 
 #pragma once
 
+#include "queue.hpp"
 #include "utcb.hpp"
+#include "slab.hpp"
 
 class Quota;
 
@@ -138,6 +140,12 @@ union {
         inline Vmcb(unsigned const id)
         {
             asid = id;
+            flush();
+        }
+
+        ALWAYS_INLINE
+        inline void flush()
+        {
             asm volatile ("vmsave" : : "a" (Buddy::ptr_to_phys (this)) : "memory");
         }
 
@@ -154,4 +162,53 @@ union {
         static bool has_urg() { return true; }
 
         static void init();
+};
+
+class Vmcb_state
+{
+    friend class Queue<Vmcb_state>;
+
+    private:
+
+        static Slab_cache cache;
+
+        static Queue<Vmcb_state> queue CPULOCAL;
+
+        Vmcb_state *prev { nullptr }, *next { nullptr };
+
+        Vmcb_state(const Vmcb_state&);
+        Vmcb_state &operator = (Vmcb_state const &);
+
+    public:
+
+        Vmcb &vmcb;
+
+        ALWAYS_INLINE
+        static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
+
+        Vmcb_state(Vmcb &v) : vmcb(v)
+        {
+            queue.enqueue(this);
+        }
+
+        ~Vmcb_state()
+        {
+            queue.dequeue(this);
+        }
+
+        static void flush_all_vmcb()
+        {
+            queue.for_each([](auto &vmcb_state) { vmcb_state.vmcb.flush(); });
+        }
+
+        static void destroy(Vmcb_state * const remove, Quota &quota)
+        {
+            if (!remove)
+                return;
+
+            Vmcb::destroy(&remove->vmcb, quota);
+
+            remove->~Vmcb_state();
+            cache.free (remove, quota);
+        }
 };

@@ -32,7 +32,9 @@
 #include "sm.hpp"
 #include "pt.hpp"
 
-Ec *Ec::current, *Ec::fpowner;
+Ec *Ec::current, *Ec::fpowner, *Ec::ec_idle;
+Sm *Ec::auth_suspend;
+
 uint64 Ec::killed_time[NUM_CPU];
 
 // Constructors
@@ -41,8 +43,8 @@ Ec::Ec (Pd *own, void (*f)(), unsigned c) : Kobject (EC, static_cast<Space_obj *
     trace (TRACE_SYSCALL, "EC:%p created (PD:%p Kernel)", this, own);
 
     regs.vtlb = nullptr;
-    regs.vmcs = nullptr;
-    regs.vmcb = nullptr;
+    regs.vmcs_state = nullptr;
+    regs.vmcb_state = nullptr;
 
     tsc = rdtsc();
 }
@@ -53,8 +55,8 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
     pd->Space_mem::init (pd->quota, c);
 
     regs.vtlb = nullptr;
-    regs.vmcs = nullptr;
-    regs.vmcb = nullptr;
+    regs.vmcs_state = nullptr;
+    regs.vmcb_state = nullptr;
 
     if (pt_oom && !pt_oom->add_ref())
         pt_oom = nullptr;
@@ -76,7 +78,7 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
 
         pd->Space_mem::insert (pd->quota, u, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, Buddy::ptr_to_phys (utcb));
 
-        regs.dst_portal = NUM_EXC - 2;
+        regs.dst_portal = PT_STARTUP;
 
         trace (TRACE_SYSCALL, "EC:%p created (PD:%p CPU:%#x UTCB:%#lx ESP:%lx EVT:%#x)", this, p, c, u, s, e);
 
@@ -94,10 +96,13 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
         if (Hip::feature() & Hip::FEAT_VMX) {
             mword host_cr3 = pd->loc[c].root(pd->quota) | (Cpu::feature (Cpu::FEAT_PCID) ? pd->did : 0);
 
-            regs.vmcs = new (pd->quota) Vmcs (reinterpret_cast<mword>(sys_regs() + 1),
+            auto vmcs = new (pd->quota) Vmcs (reinterpret_cast<mword>(sys_regs() + 1),
                                               pd->Space_pio::walk(pd->quota),
                                               host_cr3,
                                               pd->ept.root(pd->quota));
+
+            regs.vmcs_state = new (pd->quota) Vmcs_state(*vmcs);
+            regs.vmcs_state->make_current();
 
             regs.nst_ctrl<Vmcs>();
 
@@ -117,19 +122,23 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
             mword virtual_apic_page_phys = Buddy::ptr_to_phys(new (pd->quota) Virtual_apic_page);
             Vmcs::write(Vmcs::APIC_VIRT_ADDR, virtual_apic_page_phys);
 
-            regs.vmcs->clear();
+            regs.vmcs_state->clear();
             cont = send_msg<ret_user_vmresume>;
-            trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs, regs.vtlb);
+            trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs_state, regs.vtlb);
 
         } else if (Hip::feature() & Hip::FEAT_SVM) {
             if (pd->asid == Space_mem::NO_ASID_ID)
                 pd->asid = Space_mem::asid_alloc.alloc();
 
-            regs.REG(ax) = Buddy::ptr_to_phys (regs.vmcb = new (pd->quota) Vmcb (pd->quota, pd->Space_pio::walk(pd->quota), pd->npt.root(pd->quota), unsigned(pd->asid)));
+            auto vmcb = new (pd->quota) Vmcb (pd->quota, pd->Space_pio::walk(pd->quota),
+                                              pd->npt.root(pd->quota), unsigned(pd->asid));
+
+            regs.vmcb_state = new (pd->quota) Vmcb_state(*vmcb);
+            regs.REG(ax) = Buddy::ptr_to_phys (vmcb);
 
             regs.nst_ctrl<Vmcb>();
             cont = send_msg<ret_user_vmrun>;
-            trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCB:%p VTLB:%p)", this, p, regs.vmcb, regs.vtlb);
+            trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCB:%p VTLB:%p)", this, p, regs.vmcb_state, regs.vtlb);
         }
     }
 }
@@ -140,8 +149,8 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, stati
     pd->Space_mem::init (pd->quota, c);
 
     regs.vtlb = nullptr;
-    regs.vmcs = nullptr;
-    regs.vmcb = nullptr;
+    regs.vmcs_state = nullptr;
+    regs.vmcb_state = nullptr;
 
     if (pt_oom && !pt_oom->add_ref())
         pt_oom = nullptr;
@@ -163,8 +172,8 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, Pt *pt) : Kobject (E
     pd->Space_mem::init (pd->quota, c);
 
     regs.vtlb = nullptr;
-    regs.vmcs = nullptr;
-    regs.vmcb = nullptr;
+    regs.vmcs_state = nullptr;
+    regs.vmcb_state = nullptr;
 
     if (pt_oom && !pt_oom->add_ref())
         pt_oom = nullptr;
@@ -203,7 +212,7 @@ Ec::~Ec()
 
     if (Hip::feature() & Hip::FEAT_VMX) {
 
-        regs.vmcs->make_current();
+        regs.vmcs_state->make_current();
 
         mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
         Msr_area *host_msr_area = reinterpret_cast<Msr_area*>(Buddy::phys_to_ptr(host_msr_area_phys));
@@ -218,11 +227,12 @@ Ec::~Ec()
             reinterpret_cast<Virtual_apic_page*>(Buddy::phys_to_ptr(virtual_apic_page_phys));
         Virtual_apic_page::destroy(virtual_apic_page, pd->quota);
 
-        regs.vmcs->clear();
+        regs.vmcs_state->clear();
 
-        Vmcs::destroy(regs.vmcs, pd->quota);
+        Vmcs_state::destroy(regs.vmcs_state, pd->quota);
+
     } else if (Hip::feature() & Hip::FEAT_SVM)
-        Vmcb::destroy(regs.vmcb, pd->quota);
+        Vmcb_state::destroy(regs.vmcb_state, pd->quota);
 }
 
 void Ec::handle_hazard (mword hzd, void (*func)())
@@ -251,7 +261,7 @@ void Ec::handle_hazard (mword hzd, void (*func)())
         if (func == ret_user_sysexit)
             current->redirect_to_iret();
 
-        current->regs.dst_portal = NUM_EXC - 1;
+        current->regs.dst_portal = PT_RECALL;
         send_msg<ret_user_iret>();
     }
 
@@ -269,12 +279,12 @@ void Ec::handle_hazard (mword hzd, void (*func)())
         current->regs.clr_hazard (HZD_TSC);
 
         if (func == ret_user_vmresume) {
-            current->regs.vmcs->make_current();
+            current->regs.vmcs_state->make_current();
             Vmcs::write (Vmcs::TSC_OFFSET,    static_cast<mword>(current->regs.tsc_offset));
             Vmcs::write (Vmcs::TSC_OFFSET_HI, static_cast<mword>(current->regs.tsc_offset >> 32));
         } else
         if (func == ret_user_vmrun) {
-            current->regs.vmcb->tsc_offset = current->regs.tsc_offset;
+            current->regs.vmcb_state->vmcb.tsc_offset = current->regs.tsc_offset;
         }
     }
 
@@ -346,7 +356,7 @@ void Ec::ret_user_vmresume()
     if (EXPECT_FALSE (hzd))
         handle_hazard (hzd, ret_user_vmresume);
 
-    current->regs.vmcs->make_current();
+    current->regs.vmcs_state->make_current();
 
     if (EXPECT_FALSE (Pd::current->gtlb.chk (Cpu::id))) {
         Pd::current->gtlb.clr (Cpu::id);
@@ -379,7 +389,7 @@ void Ec::ret_user_vmrun()
     if (EXPECT_FALSE (Pd::current->gtlb.chk (Cpu::id))) {
         Pd::current->gtlb.clr (Cpu::id);
         if (current->regs.nst_on)
-            current->regs.vmcb->tlb_control = 1;
+            current->regs.vmcb_state->vmcb.tlb_control = 1;
         else
             current->regs.vtlb->flush (true);
     }
@@ -464,6 +474,11 @@ void Ec::root_invoke()
     Space_obj::insert_root (Pd::kern.quota, Pd::current);
     Space_obj::insert_root (Pd::kern.quota, Ec::current);
     Space_obj::insert_root (Pd::kern.quota, Sc::current);
+
+    /* authority capability for ACPI suspend syscall */
+    Ec::auth_suspend = new (Pd::root) Sm (&Pd::root, SM_ACPI_SUSPEND);
+    auth_suspend->add_ref();
+    Space_obj::insert_root (Pd::kern.quota, auth_suspend);
 
     /* adjust root quota used by Pd::kern during bootstrap */
     Quota::boot(Pd::kern.quota, Pd::root.quota);
@@ -552,4 +567,27 @@ void Ec::idl_handler()
 {
     if (Ec::current->cont == Ec::idle)
         Rcu::update();
+}
+
+void Ec::hlt_prepare()
+{
+    if (Hip::feature() & Hip::FEAT_VMX) {
+        Vmcs_state::flush_all_vmcs();
+
+        Vmcs_state::vmxoff();
+    } else
+    if (Hip::feature() & Hip::FEAT_SVM) {
+        Vmcb_state::flush_all_vmcb();
+    }
+
+    current->flush_fpu();
+    Ec::ec_idle->pd->make_current();
+
+    wbinvd();
+}
+
+void Ec::hlt_handler()
+{
+    hlt_prepare();
+    shutdown();
 }

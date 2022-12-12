@@ -18,6 +18,7 @@
 
 #include "acpi.hpp"
 #include "acpi_fadt.hpp"
+#include "acpi_facs.hpp"
 #include "io.hpp"
 #include "x86.hpp"
 #include "assert.hpp"
@@ -76,6 +77,26 @@ void Acpi_table_fadt::parse() const
     Acpi::irq     = sci_irq;
     Acpi::feature = flags;
 
+    if (length >= 129) {
+        Acpi::reset_reg = reset_reg;
+        Acpi::reset_val = reset_value;
+    }
+
+    if (length >= 140) {
+#ifdef __i386__
+        if (x_firmware_ctrl <= ~0U - sizeof(Acpi_table_facs) + 1)
+            Acpi::facs = static_cast<Paddr>(x_firmware_ctrl);
+#else
+        Acpi::facs = x_firmware_ctrl;
+#endif
+    }
+
+    if (!Acpi::facs)
+        Acpi::facs = firmware_ctrl;
+
+    if (Acpi::feature & HARDWARE_REDUCED_ACPI)
+        return; /* not supported by now */
+
     init_gas(Acpi::pm1a_sts, Acpi::pm1a_ena, pm1_evt_len, pm1a_evt_blk, x_pm1a_evt_blk);
     init_gas(Acpi::pm1b_sts, Acpi::pm1b_ena, pm1_evt_len, pm1b_evt_blk, x_pm1b_evt_blk);
     init_gas(Acpi::pm1a_cnt, pm1_cnt_len, pm1a_cnt_blk, x_pm1a_cnt_blk);
@@ -85,14 +106,20 @@ void Acpi_table_fadt::parse() const
     init_gas(Acpi::gpe0_sts, Acpi::gpe0_ena, gpe0_blk_len, gpe0_blk, x_gpe0_blk);
     init_gas(Acpi::gpe1_sts, Acpi::gpe1_ena, gpe1_blk_len, gpe1_blk, x_gpe1_blk);
 
-    if (length >= 129) {
-        Acpi::reset_reg = reset_reg;
-        Acpi::reset_val = reset_value;
-    }
+    init();
+}
 
-    if (smi_cmd && acpi_enable) {
-        Io::out (smi_cmd, acpi_enable);
-        while (!(Acpi::read (Acpi::PM1_CNT) & Acpi::PM1_CNT_SCI_EN))
-            pause();
+
+void Acpi_table_fadt::init() const
+{
+    if (Acpi::feature & HARDWARE_REDUCED_ACPI)
+        return;
+
+    if (!smi_cmd || !acpi_enable || (Acpi::read (Acpi::PM1_CNT) & Acpi::PM1_CNT_SCI_EN))
+        return;
+
+    Io::out (smi_cmd, acpi_enable);
+    while (!(Acpi::read (Acpi::PM1_CNT) & Acpi::PM1_CNT_SCI_EN)) {
+        pause();
     }
 }

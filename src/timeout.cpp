@@ -74,7 +74,7 @@ void Timeout::check()
 {
     Timeout *prev_list = list;
 
-    while (list && list->time <= rdtsc()) {
+    while (list && list->time <= Lapic::time()) {
         Timeout *t = list;
         t->dequeue();
         t->trigger();
@@ -88,4 +88,10 @@ void Timeout::check()
          */
          Lapic::set_timer(list->time);
     }
+}
+
+void Timeout::sync()
+{
+    if (list)
+         Lapic::set_timer(list->time);
 }

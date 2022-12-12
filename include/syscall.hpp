@@ -154,9 +154,11 @@ class Sys_revoke : public Sys_regs
         inline void rem(Pd * p) { ARG_3 = reinterpret_cast<mword>(p); }
 };
 
-class Sys_lookup : public Sys_regs
+class Sys_misc : public Sys_regs
 {
     public:
+        enum { SYS_LOOKUP = 0, SYS_DELEGATE = 1, SYS_ACPI_SUSPEND };
+
         ALWAYS_INLINE
         inline Crd & crd() { return reinterpret_cast<Crd &>(ARG_2); }
 
@@ -165,6 +167,12 @@ class Sys_lookup : public Sys_regs
 
         ALWAYS_INLINE
         inline mword pd_dst() const { return ARG_3; }
+
+        ALWAYS_INLINE
+        inline mword sleep_type_a() const { return ARG_2; }
+
+        ALWAYS_INLINE
+        inline mword sleep_type_b() const { return ARG_3; }
 };
 
 class Sys_reply : public Sys_regs

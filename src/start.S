@@ -6,6 +6,8 @@
  *
  * Copyright (C) 2012 Udo Steinberg, Intel Corporation.
  *
+ * Copyright (C) 2017-2022 Alexander Boettcher, Genode Labs GmbH
+ *
  * This file is part of the NOVA microhypervisor.
  *
  * NOVA is free software: you can redistribute it and/or modify it
@@ -106,7 +108,7 @@ __boot_gdt__:
 
 __start_ap:             INIT_PAGING
                         lgdtl   %cs:__gdt_desc - __start_ap
-                        ljmpl   $SEL_KERN_CODE, $__start_all
+                        ljmpl   $SEL_KERN_CODE, $__start_ap_high
 
 __gdt_desc:             .word   __boot_gdt__ - __boot_gdt - 1
                         .long   __boot_gdt
@@ -149,7 +151,7 @@ __start_bsp:            mov     $(__start_bsp - __start_ap), %ecx
 
                         INIT_PAGING
                         lgdt    __boot_gdt + 2
-                        ljmp    $SEL_KERN_CODE, $__start_all
+                        ljmp    $SEL_KERN_CODE, $_start_bsp_high
 
 /*
  * Common Startup Code
@@ -158,10 +160,11 @@ __start_bsp:            mov     $(__start_bsp - __start_ap), %ecx
 .code64
 #endif
 
-__start_all:            INIT_STATE
-                        test    %REG(bx), %REG(bx)
-                        je      2f
-
+/* 32/64 bit entry for boot CPU - BSP */
+_start_bsp_high:        INIT_STATE
+                        /* REG(ax) contain MBI1/2 magic value  */
+                        /* REG(bx) contain MBI1/2 data pointer */
+                        /* move ax/bx according to REGPARM(2) calling convention */
 #ifdef __x86_64__
                         mov     %REG(ax), %REG(di)
                         mov     %REG(bx), %REG(si)
@@ -169,18 +172,27 @@ __start_all:            INIT_STATE
                         mov     %REG(bx), %edx
 #endif
                         call    init
-                        jmp     3f
+                        jmp     __start_all
 
+
+/* 32/64 bit AP code entry and entry on resume for *all* CPUs */
+__start_ap_high:        INIT_STATE
+                        mov     $0, %REG(bx) /* make explicit to avoid confusion */
+                        jmp 2f
 1:                      pause
+                        /* swap bx (==0) with boot_lock (0 or 1) */
 2:                      xchg    %REG(bx), boot_lock
                         test    %REG(bx), %REG(bx)
+                        /* if !bx then the $STACK can be used with kern_ptab_setup */
                         je      1b
 
+__start_all:
 3:                      call    kern_ptab_setup
-                        jmp     1f
+                        jmp     4f
 
 .text
 
-1:                      mov     %REG(ax), %cr3
+4:                      mov     %REG(ax), %cr3
+                        /* switch to stack backed physically different per CPU */
                         mov     $(CPU_LOCAL_STCK + PAGE_SIZE), %REG(sp)
                         jmp     bootstrap

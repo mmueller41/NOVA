@@ -169,7 +169,7 @@ class Cpu
         static bool bsp                     CPULOCAL;
         static bool preemption              CPULOCAL;
 
-        static void init();
+        static void init(bool = false);
 
         ALWAYS_INLINE
         static inline bool feature (Feature f)

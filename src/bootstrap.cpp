@@ -23,13 +23,39 @@
 #include "ec.hpp"
 #include "hip.hpp"
 #include "msr.hpp"
+#include "console_serial.hpp"
+#include "acpi.hpp"
+#include "ioapic.hpp"
 
 extern "C" NORETURN
 void bootstrap()
 {
     static mword barrier;
 
-    Cpu::init();
+    bool const resumed = !!Ec::current;
+
+    if (resumed && Cpu::bsp) {
+        barrier = 0;
+
+        Console::enable_all();
+
+        Ioapic::for_each([](auto ioapic) {
+            ioapic->resume();
+        });
+    }
+
+    Msr::write<uint64>(Msr::IA32_TSC, Acpi::resume_time);
+
+    Cpu::init(resumed);
+
+    if (resumed) {
+        Timeout::sync();
+
+        // Barrier: wait for all ECs to arrive here
+        for (Atomic::add (barrier, 1UL); barrier != Cpu::online; pause()) ;
+
+        Sc::schedule();
+    }
 
     // Create idle EC
     Ec::current = new (Pd::root) Ec (Pd::current = &Pd::kern, Ec::idle, Cpu::id);
@@ -37,17 +63,16 @@ void bootstrap()
     Pd::current->add_ref();
     Space_obj::insert_root (Pd::kern.quota, Sc::current = new (Pd::root) Sc (&Pd::kern, Cpu::id, Ec::current));
     Sc::current->add_ref();
+    Ec::ec_idle = Ec::current;
 
     // Barrier: wait for all ECs to arrive here
     for (Atomic::add (barrier, 1UL); barrier != Cpu::online; pause()) ;
 
-    Msr::write<uint64>(Msr::IA32_TSC, 0);
-
     // Create root task
     if (Cpu::bsp) {
         Hip::add_check();
-        Ec *root_ec = new (Pd::root) Ec (&Pd::root, NUM_EXC + 1, &Pd::root, Ec::root_invoke, Cpu::id, 0, USER_ADDR - 2 * PAGE_SIZE, 0, nullptr);
-        Sc *root_sc = new (Pd::root) Sc (&Pd::root, NUM_EXC + 2, root_ec, Cpu::id, Sc::default_prio, Sc::default_quantum);
+        Ec *root_ec = new (Pd::root) Ec (&Pd::root, EC_ROOTTASK, &Pd::root, Ec::root_invoke, Cpu::id, 0, USER_ADDR - 2 * PAGE_SIZE, 0, nullptr);
+        Sc *root_sc = new (Pd::root) Sc (&Pd::root, SC_ROOTTASK, root_ec, Cpu::id, Sc::default_prio, Sc::default_quantum);
         root_sc->remote_enqueue();
     }
 

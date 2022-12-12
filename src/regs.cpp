@@ -26,13 +26,13 @@
 #include "vpid.hpp"
 #include "vtlb.hpp"
 
-template <> mword Exc_regs::get_g_cs_dl<Vmcb>()         const { return static_cast<mword>(vmcb->cs.ar) >> 9 & 0x3; }
-template <> mword Exc_regs::get_g_flags<Vmcb>()         const { return static_cast<mword>(vmcb->rflags); }
-template <> mword Exc_regs::get_g_efer<Vmcb>()          const { return static_cast<mword>(vmcb->efer); }
-template <> mword Exc_regs::get_g_cr0<Vmcb>()           const { return static_cast<mword>(vmcb->cr0); }
-template <> mword Exc_regs::get_g_cr2<Vmcb>()           const { return static_cast<mword>(vmcb->cr2); }
-template <> mword Exc_regs::get_g_cr3<Vmcb>()           const { return static_cast<mword>(vmcb->cr3); }
-template <> mword Exc_regs::get_g_cr4<Vmcb>()           const { return static_cast<mword>(vmcb->cr4); }
+template <> mword Exc_regs::get_g_cs_dl<Vmcb>()         const { return static_cast<mword>(vmcb_state->vmcb.cs.ar) >> 9 & 0x3; }
+template <> mword Exc_regs::get_g_flags<Vmcb>()         const { return static_cast<mword>(vmcb_state->vmcb.rflags); }
+template <> mword Exc_regs::get_g_efer<Vmcb>()          const { return static_cast<mword>(vmcb_state->vmcb.efer); }
+template <> mword Exc_regs::get_g_cr0<Vmcb>()           const { return static_cast<mword>(vmcb_state->vmcb.cr0); }
+template <> mword Exc_regs::get_g_cr2<Vmcb>()           const { return static_cast<mword>(vmcb_state->vmcb.cr2); }
+template <> mword Exc_regs::get_g_cr3<Vmcb>()           const { return static_cast<mword>(vmcb_state->vmcb.cr3); }
+template <> mword Exc_regs::get_g_cr4<Vmcb>()           const { return static_cast<mword>(vmcb_state->vmcb.cr4); }
 
 template <> mword Exc_regs::get_g_cs_dl<Vmcs>()         const { return Vmcs::read (Vmcs::GUEST_AR_CS) >> 13 & 0x3; }
 template <> mword Exc_regs::get_g_flags<Vmcs>()         const { return Vmcs::read (Vmcs::GUEST_RFLAGS); }
@@ -42,17 +42,17 @@ template <> mword Exc_regs::get_g_cr2<Vmcs>()           const { return cr2; }
 template <> mword Exc_regs::get_g_cr3<Vmcs>()           const { return Vmcs::read (Vmcs::GUEST_CR3); }
 template <> mword Exc_regs::get_g_cr4<Vmcs>()           const { return Vmcs::read (Vmcs::GUEST_CR4); }
 
-template <> void Exc_regs::set_g_cr0<Vmcb> (mword v)    const { vmcb->cr0 = v; }
-template <> void Exc_regs::set_g_cr2<Vmcb> (mword v)          { vmcb->cr2 = v; }
-template <> void Exc_regs::set_g_cr3<Vmcb> (mword v)    const { vmcb->cr3 = v; }
-template <> void Exc_regs::set_g_cr4<Vmcb> (mword v)    const { vmcb->cr4 = v; }
+template <> void Exc_regs::set_g_cr0<Vmcb> (mword v)    const { vmcb_state->vmcb.cr0 = v; }
+template <> void Exc_regs::set_g_cr2<Vmcb> (mword v)          { vmcb_state->vmcb.cr2 = v; }
+template <> void Exc_regs::set_g_cr3<Vmcb> (mword v)    const { vmcb_state->vmcb.cr3 = v; }
+template <> void Exc_regs::set_g_cr4<Vmcb> (mword v)    const { vmcb_state->vmcb.cr4 = v; }
 
 template <> void Exc_regs::set_g_cr0<Vmcs> (mword v)    const { Vmcs::write (Vmcs::GUEST_CR0, v); }
 template <> void Exc_regs::set_g_cr2<Vmcs> (mword v)          { cr2 = v; }
 template <> void Exc_regs::set_g_cr3<Vmcs> (mword v)    const { Vmcs::write (Vmcs::GUEST_CR3, v); }
 template <> void Exc_regs::set_g_cr4<Vmcs> (mword v)    const { Vmcs::write (Vmcs::GUEST_CR4, v); }
 
-template <> void Exc_regs::set_e_bmp<Vmcb> (uint32 v)   const { vmcb->intercept_exc = v; }
+template <> void Exc_regs::set_e_bmp<Vmcb> (uint32 v)   const { vmcb_state->vmcb.intercept_exc = v; }
 template <> void Exc_regs::set_s_cr0<Vmcb> (mword v)          { cr0_shadow = v; }
 template <> void Exc_regs::set_s_cr4<Vmcb> (mword v)          { cr4_shadow = v; }
 
@@ -64,8 +64,8 @@ template <> void Exc_regs::tlb_flush<Vmcb>(bool full) const
 {
     vtlb->flush (full);
 
-    if (vmcb->asid)
-        vmcb->tlb_control = 1;
+    if (vmcb_state->vmcb.asid)
+        vmcb_state->vmcb.tlb_control = 1;
 }
 
 template <> void Exc_regs::tlb_flush<Vmcs>(bool full) const
@@ -215,18 +215,18 @@ void Exc_regs::svm_set_cpu_ctrl0 (mword val)
 {
     unsigned const msk = !!cr0_msk<Vmcb>() << 0 | !nst_on << 3 | !!cr4_msk<Vmcb>() << 4;
 
-    vmcb->npt_control  = nst_on;
-    vmcb->intercept_cr = (msk << 16) | msk;
+    vmcb_state->vmcb.npt_control  = nst_on;
+    vmcb_state->vmcb.intercept_cr = (msk << 16) | msk;
 
     if (nst_on)
-        vmcb->intercept_cpu[0] = static_cast<uint32>((val & ~Vmcb::CPU_INVLPG) | Vmcb::force_ctrl0);
+        vmcb_state->vmcb.intercept_cpu[0] = static_cast<uint32>((val & ~Vmcb::CPU_INVLPG) | Vmcb::force_ctrl0);
     else
-        vmcb->intercept_cpu[0] = static_cast<uint32>((val |  Vmcb::CPU_INVLPG) | Vmcb::force_ctrl0);
+        vmcb_state->vmcb.intercept_cpu[0] = static_cast<uint32>((val |  Vmcb::CPU_INVLPG) | Vmcb::force_ctrl0);
 }
 
 void Exc_regs::svm_set_cpu_ctrl1 (mword val)
 {
-    vmcb->intercept_cpu[1] = static_cast<uint32>(val | Vmcb::force_ctrl1);
+    vmcb_state->vmcb.intercept_cpu[1] = static_cast<uint32>(val | Vmcb::force_ctrl1);
 }
 
 void Exc_regs::vmx_set_cpu_ctrl0 (mword val)
@@ -269,8 +269,8 @@ template <> void Exc_regs::nst_ctrl<Vmcb>(bool on)
     set_cr3<Vmcb> (cr3);
     set_cr4<Vmcb> (cr4);
 
-    svm_set_cpu_ctrl0 (vmcb->intercept_cpu[0]);
-    svm_set_cpu_ctrl1 (vmcb->intercept_cpu[1]);
+    svm_set_cpu_ctrl0 (vmcb_state->vmcb.intercept_cpu[0]);
+    svm_set_cpu_ctrl1 (vmcb_state->vmcb.intercept_cpu[1]);
     set_exc<Vmcb>();
 
     if (!nst_on)
@@ -279,8 +279,6 @@ template <> void Exc_regs::nst_ctrl<Vmcb>(bool on)
 
 template <> void Exc_regs::nst_ctrl<Vmcs>(bool on)
 {
-    assert (Vmcs::current == vmcs);
-
     mword cr0 = get_cr0<Vmcs>();
     mword cr3 = get_cr3<Vmcs>();
     mword cr4 = get_cr4<Vmcs>();
@@ -304,7 +302,7 @@ void Exc_regs::fpu_ctrl (bool on)
 {
     if (Hip::feature() & Hip::FEAT_VMX) {
 
-        vmcs->make_current();
+        vmcs_state->make_current();
 
         mword cr0 = get_cr0<Vmcs>();
         fpu_on = on;
@@ -322,7 +320,7 @@ void Exc_regs::fpu_ctrl (bool on)
 
         set_exc<Vmcb>();
 
-        svm_set_cpu_ctrl0 (vmcb->intercept_cpu[0]);
+        svm_set_cpu_ctrl0 (vmcb_state->vmcb.intercept_cpu[0]);
     }
 }
 
@@ -336,8 +334,8 @@ void Exc_regs::svm_update_shadows()
 mword Exc_regs::svm_read_gpr (unsigned reg)
 {
     switch (reg) {
-        case 0:     return static_cast<mword>(vmcb->rax);
-        case 4:     return static_cast<mword>(vmcb->rsp);
+        case 0:     return static_cast<mword>(vmcb_state->vmcb.rax);
+        case 4:     return static_cast<mword>(vmcb_state->vmcb.rsp);
         default:    return gpr[sizeof (Sys_regs) / sizeof (mword) - 1 - reg];
     }
 }
@@ -345,8 +343,8 @@ mword Exc_regs::svm_read_gpr (unsigned reg)
 void Exc_regs::svm_write_gpr (unsigned reg, mword val)
 {
     switch (reg) {
-        case 0:     vmcb->rax = val; return;
-        case 4:     vmcb->rsp = val; return;
+        case 0:     vmcb_state->vmcb.rax = val; return;
+        case 4:     vmcb_state->vmcb.rsp = val; return;
         default:    gpr[sizeof (Sys_regs) / sizeof (mword) - 1 - reg] = val; return;
     }
 }
@@ -441,7 +439,7 @@ void Exc_regs::write_cr (unsigned cr, mword val)
 
 template <> void Exc_regs::write_efer<Vmcb> (mword val)
 {
-    vmcb->efer = val;
+    vmcb_state->vmcb.efer = val;
 }
 
 template <> void Exc_regs::write_efer<Vmcs> (mword val)

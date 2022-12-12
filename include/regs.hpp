@@ -26,8 +26,8 @@
 #include "hazards.hpp"
 #include "types.hpp"
 
-class Vmcb;
-class Vmcs;
+class Vmcb_state;
+class Vmcs_state;
 class Vtlb;
 
 class Sys_regs
@@ -118,8 +118,8 @@ class Exc_regs : public Sys_regs
             };
             struct {
                 union {
-                    Vmcs *  vmcs;
-                    Vmcb *  vmcb;
+                    Vmcs_state *  vmcs_state;
+                    Vmcb_state *  vmcb_state;
                 };
                 Vtlb *  vtlb;
                 mword   cr0_shadow;

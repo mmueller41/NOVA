@@ -23,7 +23,7 @@
 #include "lock_guard.hpp"
 #include "x86.hpp"
 
-Console *Console::list;
+Console *Console::list, *Console::disabled;
 Spinlock Console::lock;
 
 void Console::print_num (uint64 val, unsigned base, unsigned width, unsigned flags)

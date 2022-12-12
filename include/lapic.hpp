@@ -136,7 +136,7 @@ class Lapic
         static inline void set_timer (uint64 tsc)
         {
             if (freq_bus) {
-                uint64 now = rdtsc();
+                uint64 now = time();
                 uint32 icr;
                 write (LAPIC_TMR_ICR, tsc > now && (icr = static_cast<uint32>(tsc - now) / (freq_tsc / freq_bus)) > 0 ? icr : 1);
             } else
@@ -147,6 +147,12 @@ class Lapic
         static inline unsigned get_timer()
         {
             return read (LAPIC_TMR_CCR);
+        }
+
+        ALWAYS_INLINE
+        static inline uint64 time()
+        {
+            return rdtsc();
         }
 
         static void init(bool);
@@ -165,15 +171,17 @@ class Lapic
         {
            bool     timeout = false;
            unsigned r       = 0;
-           uint64   tsc     = rdtsc();
+           uint64   tsc     = time();
 
            while (!timeout && fn()) {
              pause();
 
              if (freq_tsc && ((++r % 100) == 0))
-                timeout = (tsc + (ms * freq_tsc)) < rdtsc();
+                timeout = (tsc + (ms * freq_tsc)) < time();
            }
 
            return !timeout;
         }
+
+        static bool hlt_other_cpus();
 };

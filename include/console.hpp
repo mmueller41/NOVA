@@ -40,9 +40,12 @@ class Console
         Console *next { nullptr };
 
         static Console *list;
+        static Console *disabled;
         static Spinlock lock;
 
         virtual void putc (int) = 0;
+        virtual void reenable () = 0;
+
         void print_num (uint64, unsigned, unsigned, unsigned);
         void print_str (char const *, unsigned, unsigned);
 
@@ -62,4 +65,23 @@ class Console
 
         FORMAT (1,2) NORETURN
         static void panic (char const *, ...);
+
+        static void disable_all()
+        {
+            disabled = list;
+            list = nullptr;
+        }
+
+        static void enable_all()
+        {
+            if (!disabled || list)
+                return;
+
+            list = disabled;
+            disabled = nullptr;
+
+            for (auto ptr = &list; *ptr; ptr = &(*ptr)->next) {
+                (*ptr)->reenable();
+            }
+        }
 };

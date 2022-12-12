@@ -185,6 +185,26 @@ void Hip::add_mod(Hip_mem *&mem, T const * mod, uint32 aux)
 
 void Hip::add_mhv (Hip_mem *&mem)
 {
+    /* exclude init code which is reused during suspend/resume */
+    mem->addr = LOAD_ADDR;
+    mem->size = reinterpret_cast<mword>(&LOAD_E) - mem->addr;
+    mem->type = Hip_mem::HYPERVISOR;
+
+    auto mem_remove = mem->addr;
+    while (mem_remove < mem->addr + mem->size) {
+        Pd::kern.Space_mem::delreg(Pd::kern.quota, Pd::kern.mdb_cache, static_cast<mword>(mem_remove));
+        mem_remove += PAGE_SIZE;
+    }
+    mem++;
+
+    /* exclude page where the 16bit AP boot-up & resume code is placed */
+    mem->addr = AP_BOOT_PADDR;
+    mem->size = PAGE_SIZE;
+    mem->type = Hip_mem::HYPERVISOR;
+    Pd::kern.Space_mem::delreg(Pd::kern.quota, Pd::kern.mdb_cache, static_cast<mword>(mem->addr));
+    mem++;
+
+    /* exclude kernel memory */
     mem->addr = reinterpret_cast<mword>(&LINK_P);
     mem->size = reinterpret_cast<mword>(&LINK_E) - mem->addr;
     mem->type = Hip_mem::HYPERVISOR;
@@ -352,12 +372,12 @@ void Hip::_add_buddy (Hip_mem *&mem, Hip * hip, uint64 const system_mem_max,
     if (!buddy_size)
         return;
 
-    for (unsigned i = 0; i < (buddy_size / 4096); i++) {
-        Paddr const p_buddy = buddy_start + i * 4096;
+    for (unsigned i = 0; i < (buddy_size / PAGE_SIZE); i++) {
+        Paddr const p_buddy = buddy_start + i * PAGE_SIZE;
         Pd::kern.Space_mem::delreg(Pd::kern.quota, Pd::kern.mdb_cache, p_buddy);
 
         if (!(p_buddy & mask))
-            Pd::kern.Space_mem::insert (Pd::kern.quota, v_buddy + i * 4096, mem_log - 12, Hpt::HPT_NX | Hpt::HPT_G | Hpt::HPT_W | Hpt::HPT_P, p_buddy);
+            Pd::kern.Space_mem::insert (Pd::kern.quota, v_buddy + i * PAGE_SIZE, mem_log - 12, Hpt::HPT_NX | Hpt::HPT_G | Hpt::HPT_W | Hpt::HPT_P, p_buddy);
     }
 
     memset(reinterpret_cast<void *>(v_buddy), 0, static_cast<mword>(buddy_size));

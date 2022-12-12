@@ -67,16 +67,18 @@ class Acpi
 
         enum PM1_Control
         {
+            PM1_CNT_SLP_MASK    = 7,
+            PM1_CNT_SLP_SHIFT   = 10,
+
             PM1_CNT_SCI_EN      = 1U << 0,      // 0x1
             PM1_CNT_BM_RLD      = 1U << 1,      // 0x2
             PM1_CNT_GBL_RLS     = 1U << 2,      // 0x4
-            PM1_CNT_SLP_TYP     = 7U << 10,     // 0x400
             PM1_CNT_SLP_EN      = 1U << 13      // 0x2000
         };
 
         static unsigned const timer_frequency = 3579545;
 
-        static Paddr dmar, fadt, hpet, madt, mcfg, rsdt, xsdt, ivrs;
+        static Paddr dmar, fadt, facs, hpet, madt, mcfg, rsdt, xsdt, ivrs;
         static Paddr srat;
 
         static Acpi_gas pm1a_sts;
@@ -101,11 +103,13 @@ class Acpi
 
         static void hw_write (Acpi_gas *, unsigned, bool = false);
         static void write (Register, unsigned);
-        static void clear (Register, unsigned);
+        static void clear (Register);
 
     public:
         static unsigned irq;
         static unsigned gsi;
+
+        static uint64   resume_time;
 
         ALWAYS_INLINE
         static inline Paddr p_rsdt() { return rsdt; }
@@ -115,7 +119,11 @@ class Acpi
 
         static void delay (unsigned);
         static void reset();
+        static bool suspend (uint8, uint8);
 
         INIT
         static void setup();
+
+        INIT
+        static void init();
 };

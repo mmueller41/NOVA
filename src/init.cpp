@@ -33,9 +33,30 @@
 #include "multiboot2.hpp"
 #include "x2apic.hpp"
 
+
+static inline unsigned apic_id()
+{
+    uint32 ebx, unused;
+    Cpu::cpuid (1, unused, ebx, unused, unused);
+    return ebx >> 24;
+}
+
 extern "C" INIT
 mword kern_ptab_setup()
 {
+    static Paddr cr3[NUM_CPU];
+
+    auto const cpuid = Cpu::find_by_apic_id (apic_id());
+
+    if (cpuid < NUM_CPU && cr3[cpuid]) {
+        if (cpuid == 0) {
+            /* reinit Acpi on resume */
+            Acpi::init();
+        }
+
+        return cr3[cpuid];
+    }
+
     Hptp hpt;
 
     // Allocate and map cpu page
@@ -50,6 +71,9 @@ mword kern_ptab_setup()
 
     // Sync kernel code and data
     hpt.sync_master_range (Pd::kern.quota, LINK_ADDR, CPU_LOCAL);
+
+    if (cpuid < NUM_CPU)
+        cr3[cpuid] = hpt.addr();
 
     return hpt.addr();
 }

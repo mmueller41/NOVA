@@ -47,4 +47,5 @@ class Timeout
         uint64 dequeue();
 
         static void check();
+        static void sync();
 };

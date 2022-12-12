@@ -22,6 +22,7 @@
 #include "acpi.hpp"
 #include "cmdline.hpp"
 #include "ec.hpp"
+#include "hip.hpp"
 #include "lapic.hpp"
 #include "msr.hpp"
 #include "rcu.hpp"
@@ -42,7 +43,7 @@ void Lapic::init_cpuid()
     Cpu::id = Cpu::find_by_apic_id (Lapic::id());
 }
 
-void Lapic::init(bool invariant_tsc)
+void Lapic::init(bool const invariant_tsc)
 {
     Paddr apic_base = Msr::read<Paddr>(Msr::IA32_APIC_BASE);
     Msr::write (Msr::IA32_APIC_BASE, apic_base | 0x800);
@@ -99,9 +100,11 @@ void Lapic::init(bool invariant_tsc)
 
         trace (0, "TSC:%u kHz BUS:%u kHz%s%s", freq_tsc, freq_bus, measured ? " (measured)" : "", dl ? " DL" : "");
 
-        send_ipi (0, AP_BOOT_PADDR >> PAGE_BITS, DLV_SIPI, DSH_EXC_SELF);
-        Acpi::delay (1);
-        send_ipi (0, AP_BOOT_PADDR >> PAGE_BITS, DLV_SIPI, DSH_EXC_SELF);
+        if (Cpu::online > 1) {
+            send_ipi (0, AP_BOOT_PADDR >> PAGE_BITS, DLV_SIPI, DSH_EXC_SELF);
+            Acpi::delay (1);
+            send_ipi (0, AP_BOOT_PADDR >> PAGE_BITS, DLV_SIPI, DSH_EXC_SELF);
+        }
     }
 
     write (LAPIC_TMR_ICR, 0);
@@ -113,6 +116,9 @@ bool Lapic::read_tsc_freq()
 {
     if (Cpu::vendor != Cpu::Vendor::INTEL)
         return false;
+
+    if (freq_tsc || freq_bus)
+        return true;
 
     unsigned const model  = Cpu::model[Cpu::id];
     unsigned const family = Cpu::family[Cpu::id];
@@ -224,7 +230,8 @@ void Lapic::lvt_vector (unsigned vector)
 
     eoi();
 
-    Counter::print<1,16> (++Counter::lvt[lvt], Console_vga::COLOR_LIGHT_BLUE, lvt + SPN_LVT);
+    if (lvt < NUM_LVT)
+        Counter::print<1,16> (++Counter::lvt[lvt], Console_vga::COLOR_LIGHT_BLUE, lvt + SPN_LVT);
 }
 
 void Lapic::ipi_vector (unsigned vector)
@@ -235,9 +242,43 @@ void Lapic::ipi_vector (unsigned vector)
         case VEC_IPI_RRQ: Sc::rrq_handler(); break;
         case VEC_IPI_RKE: Sc::rke_handler(); break;
         case VEC_IPI_IDL: Ec::idl_handler(); break;
+        case VEC_IPI_HLT:
+            /* hlt handler does not return */
+            ++Counter::ipi[ipi];
+            Ec::hlt_handler();
+            break;
     }
 
     eoi();
 
-    Counter::print<1,16> (++Counter::ipi[ipi], Console_vga::COLOR_LIGHT_GREEN, ipi + SPN_IPI);
+    if (ipi < NUM_IPI)
+        Counter::print<1,16> (++Counter::ipi[ipi], Console_vga::COLOR_LIGHT_GREEN, ipi + SPN_IPI);
+}
+
+bool Lapic::hlt_other_cpus()
+{
+    bool success = true;
+
+    for (unsigned cpu = 0; cpu < NUM_CPU; cpu++) {
+
+        if (!Hip::cpu_online (cpu))
+            continue;
+
+        if (Cpu::id == cpu)
+            continue;
+
+        unsigned ctr = Counter::remote (cpu, VEC_IPI_HLT - VEC_IPI);
+
+        Lapic::send_ipi (cpu, VEC_IPI_HLT);
+
+        bool sent = Lapic::pause_loop_until(500, [&] {
+            return (Counter::remote (cpu, VEC_IPI_HLT - VEC_IPI) == ctr); });
+
+        if (!sent) {
+            trace (0, "IPI timeout hlt %u->%u", Cpu::id, cpu);
+            success = false;
+        }
+    }
+
+    return success;
 }

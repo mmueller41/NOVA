@@ -34,6 +34,7 @@ class Ioapic : public List<Ioapic>
         Iommu::Interface   *iommu { nullptr };
         uint16              rid;
         Spinlock            lock { };
+        mword               saved_entries { };
 
         static Ioapic *     list;
         static Slab_cache   cache;
@@ -131,6 +132,51 @@ class Ioapic : public List<Ioapic>
         {
             unsigned pin = gsi - gsi_base;
             write (Register (IOAPIC_IRT + 2 * pin + 1), ire ? (gsi << 17 | 1ul << 16) : (cpu << 24));
+        }
+
+        ALWAYS_INLINE
+        inline uint64 get_irt(unsigned entry)
+        {
+            unsigned index = (IOAPIC_IRT + 2 * entry);
+            return (uint64(read (Register (index))) << 32) |
+                    uint64(read (Register (index+1)));
+        }
+
+        bool suspend(Quota &quota)
+        {
+            if (!saved_entries)
+                saved_entries = mword(Buddy::allocator.alloc (0, quota, Buddy::FILL_0));
+
+            auto const max = irt_max();
+
+            if (!saved_entries || (max * sizeof(uint64) > PAGE_SIZE))
+                return false;
+
+            uint64 * const save = reinterpret_cast<uint64 *>(saved_entries);
+
+            for (unsigned entry = 0; entry < max; entry++) {
+                save[entry] = get_irt(entry);
+            }
+
+            return true;
+        }
+
+        bool resume()
+        {
+            auto const max = irt_max();
+
+            if (!saved_entries || (max * sizeof(uint64) > PAGE_SIZE))
+                return false;
+
+            uint64 const * const saved = reinterpret_cast<uint64 *>(saved_entries);
+
+            for (unsigned entry = 0; entry < max; entry++) {
+                unsigned index = (IOAPIC_IRT + 2 * entry);
+                write (Register (index),     uint32(saved[entry] >> 32));
+                write (Register (index + 1), uint32(saved[entry]));
+            }
+
+            return true;
         }
 
         ALWAYS_INLINE
