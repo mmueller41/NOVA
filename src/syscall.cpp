@@ -1164,6 +1164,8 @@ void Ec::sys_xcpu_call()
     Ec *xcpu_ec = new (*Pd::current) Ec (Pd::current, Pd::current, Ec::sys_call, ec->cpu, current);
     Sc *xcpu_sc = new (*xcpu_ec->pd) Sc (Pd::current, xcpu_ec, xcpu_ec->cpu, Sc::current);
 
+    current->cont = ret_xcpu_reply;
+
     xcpu_sc->remote_enqueue();
     current->xcpu_sm->dn (false, 0);
 

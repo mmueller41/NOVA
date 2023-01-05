@@ -131,10 +131,12 @@ void Ec::oom_xcpu(Pt * pt, mword src_pd_id, mword oom_state)
 
     Sc *xcpu_sc = new (*Pd::current) Sc (Pd::current, xcpu_ec, xcpu_ec->cpu, Sc::current);
 
+    this->cont = ret_xcpu_reply_oom<C>;
+
     xcpu_sc->remote_enqueue();
     this->xcpu_sm->dn (false, 0);
 
-    die ("XCPU OOM error");
+    ret_xcpu_reply_oom<C>();
 }
 
 template <void (*C)()>
