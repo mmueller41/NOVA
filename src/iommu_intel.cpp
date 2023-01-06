@@ -91,12 +91,9 @@ void Dmar::assign (uint16 rid, Pd *p)
         r->set (0, Buddy::ptr_to_phys (new (p->quota) Dmar_ctx) | 1);
 
     Dmar_ctx *c = static_cast<Dmar_ctx *>(Buddy::phys_to_ptr (r->addr())) + (rid & 0xff);
-    if (c->present())
-        c->set (0, 0);
+    c->set (lev | (p->dom_id << 8), p->dpt.root (p->quota, lev + 1) | 1);
 
     flush_ctx();
-
-    c->set (lev | p->dom_id << 8, p->dpt.root (p->quota, lev + 1) | 1);
 
     p->assign_rid(rid);
 
