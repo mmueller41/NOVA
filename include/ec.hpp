@@ -6,7 +6,7 @@
  *
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
  * Copyright (C) 2014 Udo Steinberg, FireEye, Inc.
- * Copyright (C) 2012-2020 Alexander Boettcher, Genode Labs GmbH.
+ * Copyright (C) 2012-2023 Alexander Boettcher, Genode Labs GmbH.
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -274,8 +274,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
             if (!Cmdline::fpu_lazy) {
                 if (!idle_ec()) {
-                    if (!current->utcb && !this->utcb)
-                        assert(!(Cpu::hazard & HZD_FPU));
+                    if (current->vcpu() && this->vcpu())
+                        Cpu::hazard &= ~HZD_FPU; /* trigger save in transfer_fpu */
 
                     transfer_fpu(this);
                     assert(fpowner == this);
@@ -544,4 +544,10 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         ALWAYS_INLINE
         void inline measured() { time_m = time; }
+
+        ALWAYS_INLINE
+        inline bool vcpu()
+        {
+            return regs.vtlb || regs.vmcb_state || regs.vmcs_state;
+        }
 };

@@ -301,6 +301,7 @@ template <> void Exc_regs::nst_ctrl<Vmcs>(bool on)
 void Exc_regs::fpu_ctrl (bool on)
 {
     if (Hip::feature() & Hip::FEAT_VMX) {
+        assert(vmcs_state);
 
         vmcs_state->make_current();
 
@@ -312,7 +313,9 @@ void Exc_regs::fpu_ctrl (bool on)
 
         Vmcs::write (Vmcs::CR0_MASK, cr0_msk<Vmcs>());
 
-    } else {
+    } else
+    if (Hip::feature() & Hip::FEAT_SVM) {
+        assert(vmcb_state);
 
         mword cr0 = get_cr0<Vmcb>();
         fpu_on = on;

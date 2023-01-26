@@ -6,7 +6,7 @@
  *
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
  * Copyright (C) 2014 Udo Steinberg, FireEye, Inc.
- * Copyright (C) 2012-2020 Alexander Boettcher, Genode Labs GmbH
+ * Copyright (C) 2012-2023 Alexander Boettcher, Genode Labs GmbH
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -766,7 +766,7 @@ void Ec::sys_ec_ctrl()
                 }
             }
 
-            if (!(r->state() && current->utcb))
+            if (!(r->state() && !current->vcpu()))
                 break;
 
             Cpu_regs regs(ec->regs);
@@ -828,7 +828,7 @@ void Ec::sys_ec_ctrl()
             if (EXPECT_FALSE(ec->cpu != current->cpu))
                 sys_finish<Sys_regs::BAD_CPU>();
 
-            if (EXPECT_FALSE(!ec->utcb || ec->blocked() || ec->partner || ec->pd != Ec::current->pd || (r->cnt() != ec->utcb->tls)))
+            if (EXPECT_FALSE(ec->vcpu() || ec->blocked() || ec->partner || ec->pd != Ec::current->pd || !ec->utcb || (r->cnt() != ec->utcb->tls)))
                 sys_finish<Sys_regs::BAD_PAR>();
 
             current->cont = sys_finish<Sys_regs::SUCCESS>;

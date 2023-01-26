@@ -5,7 +5,7 @@
  * Economic rights: Technische Universitaet Dresden (Germany)
  *
  * Copyright (C) 2012 Udo Steinberg, Intel Corporation.
- * Copyright (C) 2013-2018 Alexander Boettcher, Genode Labs GmbH.
+ * Copyright (C) 2013-2023 Alexander Boettcher, Genode Labs GmbH.
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -34,11 +34,11 @@ void Fpu::init()
 
 void Ec::load_fpu()
 {
-    if (Cmdline::fpu_lazy && !utcb)
+    if (Cmdline::fpu_lazy && vcpu())
         regs.fpu_ctrl (true);
 
     if (EXPECT_FALSE (!fpu)) {
-        if (!Cmdline::fpu_lazy && !utcb)
+        if (!Cmdline::fpu_lazy && vcpu())
             regs.fpu_ctrl (true);
 
         Fpu::init();
@@ -49,7 +49,7 @@ void Ec::load_fpu()
 
 void Ec::save_fpu()
 {
-    if (Cmdline::fpu_lazy && !utcb)
+    if (Cmdline::fpu_lazy && vcpu())
         regs.fpu_ctrl (false);
 
     if (EXPECT_FALSE (!fpu))
@@ -110,7 +110,7 @@ void Ec::handle_exc_nm()
     Fpu::enable();
 
     if (current == fpowner) {
-        if (!current->utcb && !current->regs.fpu_on)
+        if (current->vcpu() && !current->regs.fpu_on)
            current->regs.fpu_ctrl (true);
         return;
     }

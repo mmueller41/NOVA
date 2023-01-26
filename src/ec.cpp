@@ -6,7 +6,7 @@
  *
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
  * Copyright (C) 2014 Udo Steinberg, FireEye, Inc.
- * Copyright (C) 2012-2020 Alexander Boettcher, Genode Labs GmbH.
+ * Copyright (C) 2012-2023 Alexander Boettcher, Genode Labs GmbH.
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -524,7 +524,7 @@ void Ec::die (char const *reason, Exc_regs *r)
 {
     bool const show = current->pd == &Pd::kern || current->pd == &Pd::root;
 
-    if (current->utcb || show) {
+    if (!current->vcpu() || show) {
         if (show || !strmatch(reason, "PT not found", 12))
         trace (0, "Killed EC:%p SC:%p V:%#lx CS:%#lx IP:%#lx(%#lx) CR2:%#lx ERR:%#lx (%s) %s",
                current, Sc::current, r->vec, r->cs, r->REG(ip), r->ARG_IP, r->cr2, r->err, reason, current->pd == &Pd::root ? "Pd::root" : current->pd == &Pd::kern ? "Pd::kern" : "");
