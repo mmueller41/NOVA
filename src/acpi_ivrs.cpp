@@ -148,7 +148,13 @@ void Acpi_table_ivrs::parse() const
         return false;
     });
 
-    Iommu::Amd::enable ();
-
     Hip::set_feature (Hip::FEAT_IOMMU);
+}
+
+void Acpi_table_ivrs::init() const
+{
+    if (!Cmdline::iommu)
+        return;
+
+    Iommu::Amd::enable ();
 }

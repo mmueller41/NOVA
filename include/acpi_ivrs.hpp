@@ -120,4 +120,6 @@ class Acpi_table_ivrs : public Acpi_table
 
         INIT
         void parse() const;
+
+        void init() const;
 };

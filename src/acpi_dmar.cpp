@@ -92,7 +92,13 @@ void Acpi_table_dmar::parse() const
         }
     }
 
-    Dmar::enable (flags);
-
     Hip::set_feature (Hip::FEAT_IOMMU);
+}
+
+void Acpi_table_dmar::init() const
+{
+    if (!Cmdline::iommu)
+        return;
+
+    Dmar::enable (flags);
 }
