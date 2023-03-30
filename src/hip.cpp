@@ -220,7 +220,8 @@ void Hip::add_cpu()
     cpu->core     = Cpu::core[Cpu::id];
     cpu->thread   = Cpu::thread[Cpu::id];
     cpu->flags    = 1;
-    cpu->family   = Cpu::family[Cpu::id];
+    cpu->vendor = static_cast<uint8>(Cpu::vendor);
+    cpu->family = Cpu::family[Cpu::id];
     cpu->model    = Cpu::model[Cpu::id];
     cpu->stepping = Cpu::stepping[Cpu::id] & 0xf;
     cpu->platform = Cpu::platform[Cpu::id] & 0x7;

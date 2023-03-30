@@ -35,6 +35,7 @@ class Hip_cpu
         uint8   core;
         uint8   package;
         uint8   acpi_id;
+        uint8   vendor;
         uint8   family;
         uint8   model;
         uint8   stepping:4;
