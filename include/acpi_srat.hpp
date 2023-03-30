@@ -23,6 +23,7 @@
 #pragma once
 
 #include "acpi_table.hpp"
+#include "hip.hpp"
 
 #pragma pack(1)
 
@@ -147,7 +148,9 @@ class Acpi_table_srat : public Acpi_table
         INIT static void parse_gias(Acpi_srat_entry const *);
 
         INIT void parse_entry(Acpi_srat_entry::Type, void (*)(Acpi_srat_entry const *)) const;
-    
+
+        INIT static void add_mementry(Hip_mem *me, uint64 start, size_t size, uint32 numa_id, bool replacement);
+
     public:
         uint32 reserved;
         uint64 reserved2;
