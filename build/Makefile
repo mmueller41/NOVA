@@ -77,7 +77,7 @@ WFLAGS		+= -Weffc++
 ifeq ($(ARCH),x86_32)
 WFLAGS		+= $(call check,-Wframe-larger-than=104)
 else
-WFLAGS		+= $(call check,-Wframe-larger-than=256)
+WFLAGS		+= $(call check,-Wframe-larger-than=1024)
 endif
 WFLAGS		+= $(call check,-Wlogical-op)
 WFLAGS		+= $(call check,-Wstrict-null-sentinel)
