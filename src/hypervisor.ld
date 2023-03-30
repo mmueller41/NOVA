@@ -49,7 +49,7 @@ SECTIONS
         *(.initdata)
     } : init = 0x90909090
 
-    . = ALIGN(4K) + 4K; PROVIDE (STACK = .);
+    . = ALIGN(4K) + 8K; PROVIDE (STACK = .);
 
     PROVIDE (LOAD_E = .);
     OFFSET = LINK_ADDR - ALIGN (16M);
