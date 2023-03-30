@@ -23,6 +23,7 @@
 #include "gdt.hpp"
 #include "mca.hpp"
 #include "stdio.hpp"
+#include "pmc.hpp"
 
 ALIGNED(16) static Fpu empty;
 
@@ -100,6 +101,66 @@ void Ec::flush_fpu()
 
     if (flush_ec->del_rcu())
         Rcu::call (flush_ec);
+}
+
+void Ec::transfer_pmcs(Ec *)
+{
+    assert(!idle_ec());
+
+    if (pmc_owner != this) {
+        if (pmc_owner && pmc_owner->pd != this->pd) {
+            pmc_owner->stop_pmcs();
+            pmc_owner->save_pmcs();
+            
+            restore_pmcs();
+            restart_pmcs();
+        }
+    }
+
+    pmc_owner = this;
+
+}
+
+void Ec::stop_pmcs()
+{
+    for (Pmc *pmc = this->pd->pmcs[this->cpu]; pmc; pmc = pmc->next_pmc()) {
+        if (pmc->active()) {
+            pmc->stop(false);
+            assert(!pmc->running());
+        }
+    }
+}
+
+void Ec::restart_pmcs()
+{
+    for (Pmc *pmc = this->pd->pmcs[this->cpu]; pmc; pmc = pmc->next_pmc()) {
+        if (pmc->active()) {
+            pmc->start(); 
+            assert(pmc->running());
+        }
+    }
+}
+
+void Ec::save_pmcs()
+{
+    for (Pmc *pmc = this->pd->pmcs[this->cpu]; pmc; pmc = pmc->next_pmc()) {
+        pmc->save();
+        mword c = pmc->read();
+        assert(c == pmc->counter());
+        mword e = pmc->read_event();
+        assert(e == pmc->event());
+    }
+}
+
+void Ec::restore_pmcs()
+{
+    for (Pmc *pmc = this->pd->pmcs[this->cpu]; pmc; pmc = pmc->next_pmc()) {
+        pmc->restore();
+        mword c = pmc->read();
+        assert(c == pmc->counter());
+        mword e = pmc->read_event();
+        assert(e == pmc->event());
+    }
 }
 
 void Ec::handle_exc_nm()
@@ -226,5 +287,6 @@ void Ec::handle_exc (Exc_regs *r)
     if (Ec::current->idle_ec())
         return;
 
-    die ("EXC", r);
+    trace(TRACE_CPU, "Exception %lu", r->vec);
+    die("EXC", r);
 }

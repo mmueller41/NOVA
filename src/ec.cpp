@@ -32,7 +32,7 @@
 #include "sm.hpp"
 #include "pt.hpp"
 
-Ec *Ec::current, *Ec::fpowner, *Ec::ec_idle;
+Ec *Ec::current, *Ec::fpowner, *Ec::ec_idle, *Ec::pmc_owner;
 Sm *Ec::auth_suspend;
 
 uint64 Ec::killed_time[NUM_CPU];

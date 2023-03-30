@@ -26,6 +26,7 @@
 #include "fpu.hpp"
 #include "mtd.hpp"
 #include "pd.hpp"
+#include "pmc.hpp"
 #include "queue.hpp"
 #include "regs.hpp"
 #include "sc.hpp"
@@ -40,29 +41,32 @@ class Utcb;
 class Sm;
 class Pt;
 class Sys_ec_ctrl;
-
+class Pmc;
 class Ec : public Kobject, public Refcount, public Queue<Sc>
 {
     friend class Queue<Ec>;
     friend class Sc;
     friend class Pt;
+    friend class Pmc;
 
-    private:
-        void        (*cont)() ALIGNED (16);
-        Cpu_regs    regs { };
-        Ec *        rcap { nullptr };
-        Utcb *      utcb { nullptr };
-        Refptr<Pd>  pd;
-        Ec *        partner;
-        Ec *        prev;
-        Ec *        next;
-        Fpu *       fpu;
-        union {
-            struct {
-                uint16  cpu;
-                uint16  glb;
-            };
-            uint32  xcpu;
+private:
+    void (*cont)() ALIGNED(16);
+    Cpu_regs regs{};
+    Ec *rcap{nullptr};
+    Utcb *utcb{nullptr};
+    Refptr<Pd> pd;
+    Ec *partner;
+    Ec *prev;
+    Ec *next;
+    Fpu *fpu;
+    union
+    {
+        struct
+        {
+            uint16 cpu;
+            uint16 glb;
+        };
+        uint32 xcpu;
         };
         unsigned const evt;
         Timeout_hypercall timeout;
@@ -221,6 +225,12 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         void transfer_fpu (Ec *);
         void flush_fpu ();
 
+        void transfer_pmcs(Ec *);
+        void save_pmcs();
+        void restore_pmcs();
+        void restart_pmcs();
+        void stop_pmcs();
+
         Ec(const Ec&);
         Ec &operator = (Ec const &);
 
@@ -228,6 +238,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static Ec *current CPULOCAL_HOT;
         static Ec *fpowner CPULOCAL;
         static Ec *ec_idle CPULOCAL;
+        static Ec *pmc_owner CPULOCAL_HOT;
+
 
         Ec (Pd *, void (*)(), unsigned);
         Ec (Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
@@ -282,6 +294,10 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
                 }
 
                 Cpu::hazard &= ~HZD_FPU;
+            }
+
+            if (!idle_ec()) {
+                    transfer_pmcs(this);
             }
 
             check_hazard_tsc_aux();
@@ -478,7 +494,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         NORETURN
         static void sys_pd_ctrl();
-
+        
         NORETURN
         static void sys_assign_pci();
 

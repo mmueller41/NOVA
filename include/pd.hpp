@@ -27,6 +27,7 @@
 #include "space_obj.hpp"
 #include "space_pio.hpp"
 
+class Pmc;
 class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, public Space_obj
 {
     private:
@@ -70,6 +71,8 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
 
         static_assert (sizeof(rids_u) * 8 >= sizeof(rids) / sizeof(rids[0]), "rids_u too small");
 
+        Pd(const Pd&);
+        Pd &operator = (Pd const &);
     public:
         static Pd *current CPULOCAL_HOT;
         static Pd kern, root;
@@ -82,6 +85,10 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         Slab_cache sc_cache;
         Slab_cache ec_cache;
         Slab_cache fpu_cache;
+        Slab_cache pmc_cache;
+
+        Pmc *pmcs[NUM_CPU];
+        bool pmc_user = false;
 
         INIT
         Pd (Pd *);
