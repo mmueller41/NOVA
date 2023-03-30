@@ -34,6 +34,9 @@
 #include "vectors.hpp"
 #include "acpi.hpp"
 #include "ioapic.hpp"
+#include "amd_hpc.hpp"
+#include "intel_hpc.hpp"
+#include "pmc.hpp"
 
 template <Sys_regs::Status S, bool T>
 void Ec::sys_finish()
@@ -184,6 +187,7 @@ void Ec::recv_kern()
         if (!Cmdline::fpu_lazy)
            Cpu::hazard &= ~HZD_FPU;
     }
+    ec->transfer_pmcs(current);
 
     ret_user_sysexit();
 }
@@ -353,6 +357,8 @@ void Ec::sys_reply()
 
         if (EXPECT_FALSE (fpu))
             current->transfer_fpu (ec);
+
+        current->transfer_pmcs(ec);
     }
 
     reply(nullptr, sm);
@@ -872,6 +878,74 @@ void Ec::sys_ec_ctrl()
             uint32 dummy;
             r->set_time (div64 (ec->time * 1000, Lapic::freq_tsc, &dummy));
             ec->measured();
+            break;
+        }
+
+        case 6: /* hpc_setup */
+        {
+            current->transfer_pmcs(current);
+
+            Sys_hpc_ctrl *hc = static_cast<Sys_hpc_ctrl *>(current->sys_regs());
+
+            Pmc *pmc = new (*(current->pd)) Pmc(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu, static_cast<Pmc::Type>(hc->type()), hc->event(), hc->mask(), hc->pc_flags());
+
+            if (!pmc)
+                sys_finish<Sys_regs::QUO_OOM>();
+
+            pmc->reset();
+
+            break;
+        }
+
+        case 7: /* hpc_start */
+        {
+            Sys_hpc_ctrl *hc = static_cast<Sys_hpc_ctrl *>(current->sys_regs());
+            Pmc *pmc = Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu);
+
+            if (!pmc)
+                sys_finish<Sys_regs::BAD_PAR>();
+
+            pmc->start();
+
+            break;
+        }
+
+        case 8: /* hpc_stop */
+        {
+            Sys_hpc_ctrl *hc = static_cast<Sys_hpc_ctrl *>(current->sys_regs());
+            Pmc *pmc = Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu);
+
+            if (!pmc)
+                sys_finish<Sys_regs::BAD_PAR>();
+
+            pmc->stop(true);
+
+            break;
+        }
+
+        case 9: /* hpc_reset */
+        {
+            Sys_hpc_ctrl *hc = static_cast<Sys_hpc_ctrl *>(current->sys_regs());
+
+            Pmc *pmc = Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu);
+            if (!pmc)
+                sys_finish<Sys_regs::BAD_PAR>();
+
+            pmc->reset(hc->event());
+            break;
+        }
+
+        case 10: /* hpc_read */
+        {
+            Sys_hpc_ctrl *hc = static_cast<Sys_hpc_ctrl *>(current->sys_regs());
+            Pmc *pmc = Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu);
+
+            if (!pmc)
+                sys_finish<Sys_regs::BAD_PAR>();
+
+            mword val = pmc->read();
+            
+            r->set_time(val);
             break;
         }
 

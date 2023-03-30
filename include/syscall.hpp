@@ -195,7 +195,7 @@ class Sys_ec_ctrl : public Sys_regs
         inline unsigned long cnt() const { return ARG_2; }
 
         ALWAYS_INLINE
-        inline unsigned op() const { return flags() & 0x7; }
+        inline unsigned op() const { return flags() & 0xf; }
 
         ALWAYS_INLINE
         inline bool state() const { return ARG_2 == 1; }
@@ -210,6 +210,11 @@ class Sys_ec_ctrl : public Sys_regs
         {
             ARG_2 = static_cast<mword>(val >> 32);
             ARG_3 = static_cast<mword>(val);
+        }
+
+        inline void set_value (mword pc_val)
+        {
+            ARG_3 = pc_val;
         }
 };
 
@@ -288,6 +293,43 @@ class Sys_pd_ctrl : public Sys_regs
         {
             ARG_2 = l;
             ARG_3 = u;
+        }
+};
+
+class Sys_hpc_ctrl : public Sys_regs
+{
+    public:
+        ALWAYS_INLINE
+        inline unsigned op() const { return Sys_regs::flags() & 0x7; }
+        
+        ALWAYS_INLINE
+        inline mword sel() const { return ARG_1 >> 8; }
+
+        ALWAYS_INLINE
+        inline mword type() const { return ARG_2; }
+
+        ALWAYS_INLINE
+        inline mword event() const { return ARG_3; }
+
+        ALWAYS_INLINE
+        inline mword mask() const { return ARG_4; }
+
+        ALWAYS_INLINE
+        inline mword pc_flags() const { return ARG_5; }
+
+        ALWAYS_INLINE
+        inline mword counter() const { return ARG_1 >> 8; }
+
+        ALWAYS_INLINE
+        inline void set_retval(mword val)
+        {
+            ARG_3 = val;
+        }
+
+        ALWAYS_INLINE
+        inline void set_ec(mword ec)
+        {
+            ARG_1 = ec << 8;
         }
 };
 
