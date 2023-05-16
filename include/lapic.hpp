@@ -184,4 +184,9 @@ class Lapic
         }
 
         static bool hlt_other_cpus();
+
+        static inline uint64 ms_to_tsc(uint64 ms, uint64 start_tsc)
+        {
+            return start_tsc + uint64(Lapic::freq_tsc) * ms;
+        }
 };

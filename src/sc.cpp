@@ -32,6 +32,7 @@ Sc::Rq Sc::rq;
 Sc *        Sc::current;
 unsigned    Sc::ctr_link;
 unsigned    Sc::ctr_loop;
+uint64      Sc::long_loop;
 uint64      Sc::cross_time[NUM_CPU];
 uint64      Sc::killed_time[NUM_CPU];
 

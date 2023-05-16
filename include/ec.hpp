@@ -353,8 +353,18 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
             Counter::print<1,16> (++Counter::helping, Console_vga::COLOR_LIGHT_WHITE, SPN_HLP);
 
-            if (EXPECT_TRUE ((++Sc::ctr_loop % 100) == 0))
-                Console::print("Long helping chain");
+            /* debug helper */
+            if (EXPECT_FALSE ((++Sc::ctr_loop % HELPING_LOOP_TOO_LONG_CHECK) == 0)) {
+                auto now   = Lapic::time();
+                auto after = Lapic::ms_to_tsc(HELPING_LOOP_LIMIT_RATE_MESSAGE_MS, Sc::long_loop);
+
+                /* limit rate of messages according to helping loop define */
+                if (!Sc::long_loop || now > after) {
+                    trace(0, "Sc:%p Ec:%p - long helping chain - %u",
+                             Sc::current, Ec::current, Sc::ctr_loop);
+                    Sc::long_loop = now;
+                }
+            }
 
             activate();
         }

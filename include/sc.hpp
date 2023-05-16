@@ -95,6 +95,7 @@ class Sc : public Kobject, public Refcount
         static Sc *     current     CPULOCAL_HOT;
         static unsigned ctr_link    CPULOCAL;
         static unsigned ctr_loop    CPULOCAL;
+        static uint64   long_loop   CPULOCAL;
         static uint64   cross_time[NUM_CPU];
         static uint64   killed_time[NUM_CPU];
 
