@@ -1174,10 +1174,10 @@ void Ec::sys_xcpu_call()
 
 void Ec::ret_xcpu_reply()
 {
-    assert (current->xcpu_sm);
-
-    Sm::destroy(current->xcpu_sm, *Pd::current);
-    current->xcpu_sm = nullptr;
+    if (current->xcpu_sm) {
+        Rcu::call(current->xcpu_sm);
+        current->xcpu_sm = nullptr;
+    }
 
     if (current->regs.status() != Sys_regs::SUCCESS) {
         current->cont = sys_call;

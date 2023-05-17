@@ -163,10 +163,10 @@ void Ec::oom_xcpu_return()
 template <void (*C)()>
 void Ec::ret_xcpu_reply_oom()
 {
-    assert (current->xcpu_sm);
-
-    Sm::destroy(current->xcpu_sm, *Pd::current);
-    current->xcpu_sm = nullptr;
+    if (current->xcpu_sm) {
+        Rcu::call(current->xcpu_sm);
+        current->xcpu_sm = nullptr;
+    }
 
     current->cont = C;
     current->make_current();
