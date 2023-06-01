@@ -147,8 +147,6 @@ void Ec::save_pmcs()
         pmc->save();
         mword c = pmc->read();
         assert(c == pmc->counter());
-        mword e = pmc->read_event();
-        assert(e == pmc->event());
     }
 }
 
@@ -158,8 +156,6 @@ void Ec::restore_pmcs()
         pmc->restore();
         mword c = pmc->read();
         assert(c == pmc->counter());
-        mword e = pmc->read_event();
-        assert(e == pmc->event());
     }
 }
 

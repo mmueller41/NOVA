@@ -1,7 +1,7 @@
 /**
  * @file pmc.hpp
  * @author Michael Müller (michael.mueller@uos.de)
- * @brief Performance Counter (architecture-independent part)
+ * @brief Performance Monitoring Counters (PMC) (architecture-independent part)
  * @version 0.1
  * @date 2023-03-24
  * 
@@ -102,6 +102,9 @@ class Pmc : public List<Pmc>
         inline mword event() { return _pmc_event;  }
 
         ALWAYS_INLINE
+        inline Type type() { return _type; }
+
+        ALWAYS_INLINE
         inline Pmc *next_pmc() { return next; }
 
         ALWAYS_INLINE
@@ -113,10 +116,10 @@ class Pmc : public List<Pmc>
         }
 
         ALWAYS_INLINE
-        static inline Pmc* find(Pd &pd, unsigned int id, unsigned short cpu)
+        static inline Pmc* find(Pd &pd, unsigned int id, unsigned short cpu, Type type)
         {
             for (Pmc *pmc = pd.pmcs[cpu]; pmc; pmc = pmc->next) {
-                if (pmc->_id == id)
+                if (pmc->_id == id && pmc->_type == type)
                     return pmc;
             }
             return nullptr;

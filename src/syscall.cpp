@@ -900,7 +900,7 @@ void Ec::sys_ec_ctrl()
         case 7: /* hpc_start */
         {
             Sys_hpc_ctrl *hc = static_cast<Sys_hpc_ctrl *>(current->sys_regs());
-            Pmc *pmc = Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu);
+            Pmc *pmc = Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu, static_cast<Pmc::Type>(hc->type()));
 
             if (!pmc)
                 sys_finish<Sys_regs::BAD_PAR>();
@@ -913,7 +913,7 @@ void Ec::sys_ec_ctrl()
         case 8: /* hpc_stop */
         {
             Sys_hpc_ctrl *hc = static_cast<Sys_hpc_ctrl *>(current->sys_regs());
-            Pmc *pmc = Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu);
+            Pmc *pmc = Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu, static_cast<Pmc::Type>(hc->type()));
 
             if (!pmc)
                 sys_finish<Sys_regs::BAD_PAR>();
@@ -927,7 +927,7 @@ void Ec::sys_ec_ctrl()
         {
             Sys_hpc_ctrl *hc = static_cast<Sys_hpc_ctrl *>(current->sys_regs());
 
-            Pmc *pmc = Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu);
+            Pmc *pmc = Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu, static_cast<Pmc::Type>(hc->type()));
             if (!pmc)
                 sys_finish<Sys_regs::BAD_PAR>();
 
@@ -938,7 +938,7 @@ void Ec::sys_ec_ctrl()
         case 10: /* hpc_read */
         {
             Sys_hpc_ctrl *hc = static_cast<Sys_hpc_ctrl *>(current->sys_regs());
-            Pmc *pmc = Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu);
+            Pmc *pmc = Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu, static_cast<Pmc::Type>(hc->type()));
 
             if (!pmc)
                 sys_finish<Sys_regs::BAD_PAR>();
