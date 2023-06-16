@@ -41,6 +41,7 @@ class Msr
         // MSRs starting with IA32_ are architectural
         enum Register
         {
+            DUMMY_MWAIT_HINT        = 0x0,
             IA32_TSC                = 0x10,
             IA32_PLATFORM_ID        = 0x17,
             IA32_APIC_BASE          = 0x1b,
@@ -94,6 +95,19 @@ class Msr
             IA32_VMX_TRUE_CPU0      = 0x48e,
             IA32_VMX_TRUE_EXIT      = 0x48f,
             IA32_VMX_TRUE_ENTRY     = 0x490,
+
+            MSR_CORE_C1_RESIDENCY   = 0x660,
+            MSR_CORE_C3_RESIDENCY   = 0x3fc,
+            MSR_CORE_C6_RESIDENCY   = 0x3fd,
+            MSR_CORE_C7_RESIDENCY   = 0x3fe,
+
+            MSR_PKG_C2_RESIDENCY    = 0x60d,
+            MSR_PKG_C3_RESIDENCY    = 0x3f8,
+            MSR_PKG_C6_RESIDENCY    = 0x3f9,
+            MSR_PKG_C7_RESIDENCY    = 0x3fa,
+            MSR_PKG_C8_RESIDENCY    = 0x630,
+            MSR_PKG_C9_RESIDENCY    = 0x631,
+            MSR_PKG_C10_RESIDENCY   = 0x632,
 
             IA32_DS_AREA            = 0x600,
 

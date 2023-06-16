@@ -118,6 +118,22 @@ void Msr::user_access_intel(Utcb &utcb)
             if (!(Msr::read<uint64>(Msr::IA32_PM_ENABLE) & 1)) return false;
             break;
 
+        case MSR_CORE_C1_RESIDENCY:
+        case MSR_CORE_C3_RESIDENCY:
+        case MSR_CORE_C6_RESIDENCY:
+        case MSR_CORE_C7_RESIDENCY:
+
+        case MSR_PKG_C2_RESIDENCY:
+        case MSR_PKG_C3_RESIDENCY:
+        case MSR_PKG_C6_RESIDENCY:
+        case MSR_PKG_C7_RESIDENCY:
+        case MSR_PKG_C8_RESIDENCY:
+        case MSR_PKG_C9_RESIDENCY:
+        case MSR_PKG_C10_RESIDENCY:
+            if (!Cpu::feature (Cpu::FEAT_MONITOR_MWAIT)) return false;
+            if (!Cpu::feature (Cpu::FEAT_MWAIT_EXT))     return false;
+            break;
+
         case MSR_RAPL_POWER_UNIT:
 
         case MSR_PKG_POWER_LIMIT:
@@ -151,6 +167,9 @@ void Msr::user_access_intel(Utcb &utcb)
         auto write_value = value;
 
         switch (msr) {
+        case Msr::DUMMY_MWAIT_HINT:
+            Cpu::mwait_hint = unsigned(write_value);
+            return true;
         case Msr::IA32_PM_ENABLE:
             if (!Cpu::feature(Cpu::Feature::FEAT_HWP_7)) return false;
             write_value &= 1ull;

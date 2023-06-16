@@ -31,6 +31,7 @@
 #include "vtlb.hpp"
 #include "sm.hpp"
 #include "pt.hpp"
+#include "cpu.hpp"
 
 Ec *Ec::current, *Ec::fpowner, *Ec::ec_idle;
 Sm *Ec::auth_suspend;
@@ -419,7 +420,15 @@ void Ec::idle()
             handle_hazard (hzd, idle);
 
         uint64 t1 = rdtsc();
-        asm volatile ("sti; hlt; cli" : : : "memory");
+
+        Cpu::halt_or_mwait([&]() {
+            asm volatile ("sti; hlt; cli" : : : "memory");
+        }, [&](auto const cstate_hint) {
+            mword volatile dummy = 0;
+            asm volatile ("monitor" :: "a" (&dummy), "c"(0), "d"(0) : "memory");
+            asm volatile ("sti; mwait; cli;" :: "a"(cstate_hint), "c"(0) : "memory");
+        });
+
         uint64 t2 = rdtsc();
 
         Counter::cycles_idle += t2 - t1;

@@ -66,9 +66,10 @@ unsigned    Cpu::patch[NUM_CPU];
 unsigned    Cpu::row;
 
 uint32      Cpu::name[12];
-uint32      Cpu::features[8];
+uint32      Cpu::features[10];
 bool        Cpu::bsp;
 bool        Cpu::preemption;
+unsigned    Cpu::mwait_hint;
 
 void Cpu::check_features()
 {
@@ -104,7 +105,10 @@ void Cpu::check_features()
         case 0x6:
             cpuid (0x6, features[2], ebx, features[6], edx);
             [[fallthrough]];
-        case 0x4 ... 0x5:
+        case 0x5:
+            cpuid (0x5, 0, eax, ebx, features[8], features[9]);
+            [[fallthrough]];
+        case 0x4:
             cpuid (0x4, 0, eax, ebx, ecx, edx);
             cpp = (eax >> 26 & 0x3f) + 1;
             [[fallthrough]];
@@ -298,19 +302,30 @@ void Cpu::init(bool resume)
 
     Mca::init();
 
-    trace (TRACE_CPU, "CORE:%02x:%02x:%x %x:%x:%x:%x [%x] %s%.48s",
+    if (EXPECT_FALSE (Cmdline::hlt)) {
+        Cpu::defeature (Cpu::FEAT_MONITOR_MWAIT);
+        Cpu::defeature (Cpu::FEAT_MWAIT_EXT);
+        Cpu::defeature (Cpu::FEAT_MWAIT_IRQ);
+    }
+
+    trace (TRACE_CPU, "CORE:%02x:%02x:%x %x:%x:%x:%x [%x] %s%.48s %s%s%s",
            package[Cpu::id], core[Cpu::id], thread[Cpu::id], family[Cpu::id],
            model[Cpu::id], stepping[Cpu::id], platform[Cpu::id], patch[Cpu::id],
            core_type[Cpu::id] == 0x00 ? ""   :
            core_type[Cpu::id] == Cpu::INTEL_CORE ? "P " :
            core_type[Cpu::id] == Cpu::INTEL_ATOM ? "E " : "? ",
-           reinterpret_cast<char *>(name));
+           reinterpret_cast<char *>(name),
+           Cpu::feature (Cpu::FEAT_MONITOR_MWAIT) ? "MWAIT" : "HLT",
+           Cpu::feature (Cpu::FEAT_MWAIT_EXT) ? "+E" : "",
+           Cpu::feature (Cpu::FEAT_MWAIT_IRQ) ? "+I" : "");
 
     if (!resume)
         Hip::add_cpu();
 
     if (Cpu::feature (Cpu::FEAT_RDTSCP))
         Msr::write<uint64>(Msr::IA32_TSC_AUX, Cpu::id);
+
+    Cpu::mwait_hint = ~0U; /* invalid */
 
     boot_lock++;
 }

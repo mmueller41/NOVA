@@ -65,7 +65,8 @@ class Cpu
             FEAT_MCA            = 14,
             FEAT_ACPI           = 22,
             FEAT_HTT            = 28,
-            FEAT_VMX            = 37,
+            FEAT_MONITOR_MWAIT  = 32 * 1 + 3,
+            FEAT_VMX            = 32 * 1 + 5,
             FEAT_PCID           = 49,
             FEAT_TSC_DEADLINE   = 56,
             FEAT_CPU_TEMP       = 64,
@@ -84,6 +85,8 @@ class Cpu
             FEAT_EPB            = 32 * 6 + 3,
             FEAT_PSTATE_AMD     = 32 * 7 + 7,
             FEAT_TSC_INVARIANT  = 32 * 7 + 8,
+            FEAT_MWAIT_EXT      = 32 * 8 + 0,
+            FEAT_MWAIT_IRQ      = 32 * 8 + 1,
         };
 
         enum
@@ -180,9 +183,10 @@ class Cpu
         static unsigned row                 CPULOCAL;
 
         static uint32 name[12]              CPULOCAL;
-        static uint32 features[8]           CPULOCAL;
+        static uint32 features[10]          CPULOCAL;
         static bool bsp                     CPULOCAL;
         static bool preemption              CPULOCAL;
+        static unsigned mwait_hint          CPULOCAL;
 
         static void init(bool = false);
 
@@ -250,5 +254,19 @@ class Cpu
                     return i;
 
             return ~0U;
+        }
+
+        ALWAYS_INLINE
+        static void halt_or_mwait(auto const &halt, auto const &mwait)
+        {
+            if (!Cpu::feature (Cpu::FEAT_MONITOR_MWAIT) || mwait_hint == ~0U) {
+                halt();
+                return;
+            }
+
+            if (Cpu::feature (Cpu::FEAT_MWAIT_EXT))
+                mwait(mwait_hint);
+            else
+                mwait(0u);
         }
 };
