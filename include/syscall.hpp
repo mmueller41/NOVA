@@ -195,10 +195,16 @@ class Sys_ec_ctrl : public Sys_regs
         inline unsigned long cnt() const { return ARG_2; }
 
         ALWAYS_INLINE
+        inline mword mtd_value() const { return ARG_2; }
+
+        ALWAYS_INLINE
         inline unsigned op() const { return flags() & 0x7; }
 
         ALWAYS_INLINE
         inline bool state() const { return ARG_2 == 1; }
+
+        ALWAYS_INLINE
+        inline bool recall() const { return ARG_2 == 1; }
 
         ALWAYS_INLINE
         inline unsigned cpu() const { return ARG_2 & 0xfff; }
