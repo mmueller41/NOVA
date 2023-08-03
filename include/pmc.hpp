@@ -49,16 +49,18 @@ class Pmc : public List<Pmc>
 
         ALWAYS_INLINE
         inline void start() {
-            if (Cpu::vendor == Cpu::AMD)
+            if (Cpu::vendor == Cpu::AMD) {
                 Amd_hpc::start(static_cast<Amd_hpc::Event_selector>(_id), _type);
-            _active = true;
+                _active = true;
+            }
         }
 
         ALWAYS_INLINE
         inline void stop(bool by_user) {
-            if (Cpu::vendor == Cpu::AMD)
+            if (Cpu::vendor == Cpu::AMD) {
                 Amd_hpc::stop(static_cast<Amd_hpc::Event_selector>(_id), _type);
-            _active = !by_user;
+                _active = !by_user;
+            }
         }
 
         ALWAYS_INLINE
