@@ -267,6 +267,8 @@ bool Utcb::load_vmx (Cpu_regs *regs)
         pdpte[3] = Vmcs::read (Vmcs::GUEST_PDPTE3);
     }
 
+    exit_value = regs->dst_portal;
+
     barrier();
     mtd = m;
     items = sizeof (Utcb_data) / sizeof (mword);
@@ -462,6 +464,8 @@ bool Utcb::save_vmx (Cpu_regs *regs)
     if (mtd & Mtd::TSC_AUX)
         regs->tsc_aux = tsc_aux;
 
+    regs->dst_portal = VM_EXIT_RECALL;
+
     return mtd & Mtd::FPU;
 }
 
@@ -592,6 +596,8 @@ bool Utcb::load_svm (Cpu_regs *regs)
     }
 #endif
 
+    exit_value = regs->dst_portal;
+
     barrier();
     mtd = m;
     items = sizeof (Utcb_data) / sizeof (mword);
@@ -720,6 +726,8 @@ bool Utcb::save_svm (Cpu_regs *regs)
         vmcb->kernel_gs_base = kernel_gs_base;
     }
 #endif
+
+    regs->dst_portal = VM_EXIT_RECALL;
 
     return mtd & Mtd::FPU;
 }

@@ -893,7 +893,6 @@ void Ec::sys_ec_ctrl()
 
             Cpu_regs regs(ec->regs);
             regs.mtd = r->mtd_value();
-            regs.dst_portal = VM_EXIT_RECALL;
 
             bool fpu = false;
 
@@ -945,6 +944,8 @@ void Ec::sys_ec_ctrl()
 
             if (!r->recall() && (ec->regs.hazard() & HZD_RECALL))
                 ec->regs.clr_hazard(HZD_RECALL);
+
+            ec->regs.dst_portal = VM_EXIT_RECALL;
 
             sys_finish<Sys_regs::SUCCESS>();
         }

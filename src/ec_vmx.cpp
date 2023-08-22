@@ -91,6 +91,9 @@ void Ec::vmx_extint()
 {
     unsigned vector = Vmcs::read (Vmcs::EXI_INTR_INFO) & 0xff;
 
+    /* Set a default value in case there is an asynchronous recall. */
+    current->regs.dst_portal = VM_EXIT_RECALL;
+
     if (vector >= VEC_IPI)
         Lapic::ipi_vector (vector);
     else if (vector >= VEC_MSI)

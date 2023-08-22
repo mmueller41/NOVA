@@ -209,6 +209,8 @@ void Ec::handle_svm()
 
         case 0x60:              // EXTINT
             asm volatile ("sti; nop; cli" : : : "memory");
+            /* Set a default value in case there is an asynchronous recall. */
+            current->regs.dst_portal = VM_EXIT_RECALL;
             ret_user_vmrun();
 
         case 0x79:              // INVLPG

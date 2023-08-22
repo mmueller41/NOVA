@@ -90,6 +90,7 @@ class Utcb_data
                 mword           dr7, sysenter_cs, sysenter_rsp, sysenter_rip;
                 Utcb_segment    es, cs, ss, ds, fs, gs, ld, tr, gd, id;
                 uint64          tsc_val, tsc_off, tsc_aux;
+                uint64          exit_value;
                 uint8           fpu[sizeof(Fpu)];
             };
 
