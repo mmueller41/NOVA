@@ -58,20 +58,19 @@ void Ec::save_fpu()
     fpu->save();
 }
 
-void Ec::transfer_fpu (Ec *ec)
+void Ec::claim_fpu()
 {
-    assert(!idle_ec());
+    if (Cmdline::fpu_lazy)
+        return;
 
-    if (!(Cpu::hazard & HZD_FPU)) {
+    Fpu::enable();
+    Cpu::hazard &= ~HZD_FPU;
 
-        Fpu::enable();
+    if (!current->idle_ec())
+        current->save_fpu();
 
-        if (fpowner != this) {
-            if (fpowner)
-                fpowner->save_fpu();
-            load_fpu();
-        }
-    }
+    if (!this->idle_ec())
+        this->load_fpu();
 
     if (fpowner && fpowner->del_rcu()) {
         Ec * last = fpowner;
@@ -79,9 +78,37 @@ void Ec::transfer_fpu (Ec *ec)
         Rcu::call (last);
     }
 
-    fpowner = ec;
+    fpowner = this;
     bool ok = fpowner->add_ref();
     assert (ok);
+}
+
+void Ec::import_fpu_data(void *data)
+{
+    if (EXPECT_FALSE (!fpu))
+        fpu = new (*pd) Fpu;
+
+    fpu->import_data(data);
+
+    if (Cmdline::fpu_lazy && Ec::fpowner == this) {
+        Fpu::enable();
+        this->load_fpu();
+        Fpu::disable();
+    }
+}
+
+void Ec::export_fpu_data(void *data)
+{
+    if (Cmdline::fpu_lazy && Ec::fpowner == this) {
+        Fpu::enable();
+        this->save_fpu();
+        Fpu::disable();
+    }
+
+    if (EXPECT_FALSE (!fpu))
+        fpu = new (*pd) Fpu;
+
+    fpu->export_data(data);
 }
 
 void Ec::flush_fpu()

@@ -23,6 +23,7 @@
 #include "buddy.hpp"
 #include "crd.hpp"
 #include "util.hpp"
+#include "fpu.hpp"
 
 class Cpu_regs;
 
@@ -89,6 +90,7 @@ class Utcb_data
                 mword           dr7, sysenter_cs, sysenter_rsp, sysenter_rip;
                 Utcb_segment    es, cs, ss, ds, fs, gs, ld, tr, gd, id;
                 uint64          tsc_val, tsc_off, tsc_aux;
+                uint8           fpu[sizeof(Fpu)];
             };
 
             mword mr[(PAGE_SIZE - sizeof (Utcb_head)) / sizeof(mword)];
@@ -137,6 +139,9 @@ class Utcb : public Utcb_head, private Utcb_data
 
         ALWAYS_INLINE
         static inline void destroy(Utcb *obj, Quota &quota) { obj->~Utcb(); Buddy::allocator.free (reinterpret_cast<mword>(obj), quota); }
+
+        template <typename F>
+        void fpu_mr(F const &fn) { fn(&fpu); }
 };
 
 static_assert (sizeof(Utcb) == 4096, "Unsupported size of Utcb");

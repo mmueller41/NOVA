@@ -180,9 +180,7 @@ void Ec::recv_kern()
         fpu = current->utcb->load_svm (&ec->regs);
 
     if (EXPECT_FALSE (fpu)) {
-        ec->transfer_fpu (current);
-        if (!Cmdline::fpu_lazy)
-           Cpu::hazard &= ~HZD_FPU;
+        current->utcb->fpu_mr([&](void *data){ ec->export_fpu_data(data); });
     }
 
     ret_user_sysexit();
@@ -351,8 +349,9 @@ void Ec::sys_reply()
         else if (ec->cont == ret_user_vmrun)
             fpu = src->save_svm (&ec->regs);
 
-        if (EXPECT_FALSE (fpu))
-            current->transfer_fpu (ec);
+        if (EXPECT_FALSE (fpu)) {
+            src->fpu_mr([&](void *data){ ec->import_fpu_data(data); });
+        }
     }
 
     reply(nullptr, sm);

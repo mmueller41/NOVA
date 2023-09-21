@@ -25,6 +25,7 @@
 #include "slab.hpp"
 #include "x86.hpp"
 #include "pd.hpp"
+#include "string.hpp"
 
 class Fpu
 {
@@ -64,6 +65,13 @@ class Fpu
 
         ALWAYS_INLINE
         static inline void destroy(Fpu *obj, Pd &pd) { obj->~Fpu(); pd.fpu_cache.free (obj, pd.quota); }
+
+        ALWAYS_INLINE
+        inline void export_data(void *p) { memcpy(p, data, sizeof(data)); }
+
+        ALWAYS_INLINE
+        inline void import_data(void *p) { memcpy(data, p, sizeof(data)); }
+
 
         Fpu()
         {

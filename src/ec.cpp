@@ -494,11 +494,6 @@ void Ec::root_invoke()
     assert (Pd::kern.did == 0);
     assert (Pd::root.did == 1);
 
-    if (!Cmdline::fpu_lazy) {
-        Ec::current->transfer_fpu(Ec::current);
-        Cpu::hazard &= ~HZD_FPU;
-    }
-
     ret_user_sysexit();
 }
 

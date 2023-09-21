@@ -218,7 +218,10 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         void load_fpu();
         void save_fpu();
 
-        void transfer_fpu (Ec *);
+        void import_fpu_data (void *);
+        void export_fpu_data (void *);
+
+        void claim_fpu ();
         void flush_fpu ();
 
         Ec(const Ec&);
@@ -272,17 +275,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
             if (EXPECT_FALSE (current->del_rcu()))
                 Rcu::call (current);
 
-            if (!Cmdline::fpu_lazy) {
-                if (!idle_ec()) {
-                    if (current->vcpu() && this->vcpu())
-                        Cpu::hazard &= ~HZD_FPU; /* trigger save in transfer_fpu */
-
-                    transfer_fpu(this);
-                    assert(fpowner == this);
-                }
-
-                Cpu::hazard &= ~HZD_FPU;
-            }
+            claim_fpu();
 
             check_hazard_tsc_aux();
 
