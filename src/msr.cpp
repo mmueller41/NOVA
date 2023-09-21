@@ -118,6 +118,28 @@ void Msr::user_access_intel(Utcb &utcb)
             if (!(Msr::read<uint64>(Msr::IA32_PM_ENABLE) & 1)) return false;
             break;
 
+        case MSR_RAPL_POWER_UNIT:
+
+        case MSR_PKG_POWER_LIMIT:
+        case MSR_PKG_ENERGY_STATUS:
+        case MSR_PKG_PERF_STATUS:
+        case MSR_PKG_POWER_INFO:
+
+        case MSR_DRAM_POWER_LIMIT:
+        case MSR_DRAM_ENERGY_STATUS:
+        case MSR_DRAM_PERF_STATUS:
+        case MSR_DRAM_POWER_INFO:
+
+        case MSR_PP0_POWER_LIMIT:
+        case MSR_PP0_ENERGY_STATUS:
+        case MSR_PP0_POLICY:
+        case MSR_PP0_PERF_STATUS:
+
+        case MSR_PP1_POWER_LIMIT:
+        case MSR_PP1_ENERGY_STATUS:
+        case MSR_PP1_POLICY:
+            break;
+
         default:
             return false;
         }
