@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include "arch.hpp"
 #include "compiler.hpp"
 #include "types.hpp"
 
@@ -140,6 +141,45 @@ class Msr
         static inline void write (Register msr, T val)
         {
             asm volatile ("wrmsr" : : "a" (static_cast<mword>(val)), "d" (static_cast<mword>(static_cast<uint64>(val) >> 32)), "c" (msr));
+        }
+
+        ALWAYS_INLINE
+        static inline bool guard_read (Register const &msr, uint64 &value)
+        {
+            uint32 high { }, low { };
+            bool fault { };
+
+            /*
+             * rdmsr is skipped on GP fault and the fact is tracked in CF flag
+             * - see Ec::fixup in Ec::handle_exc_gp
+             */
+            asm volatile ("clc;" /* clear CF flag */
+                          "1: rdmsr; 2:"
+                          ".section .fixup,\"a\"; .align 8;" EXPAND (WORD) " 1b,2b; .previous"
+                          : "=@ccc" (fault), "=a" (low), "=d" (high)
+                          : "c" (msr));
+
+            value = (uint64(high) << 32) | uint64(low);
+
+            return not fault;
+        }
+
+        ALWAYS_INLINE
+        static inline bool guard_write (Register const &msr, uint64 const val)
+        {
+            bool fault { };
+
+            /*
+             * wrmsr is skipped on GP fault and the fact is tracked in CF flag
+             * - see Ec::fixup in Ec::handle_exc_gp
+             */
+            asm volatile ("clc;" /* clear CF flag */
+                          "1: wrmsr; 2:"
+                          ".section .fixup,\"a\"; .align 8;" EXPAND (WORD) " 1b,2b; .previous"
+                          : "=@ccc"(fault)
+                          : "a" (mword(val)), "d" (mword(val >> 32)), "c" (msr));
+
+            return not fault;
         }
 
         static Kobject * msr_cap;

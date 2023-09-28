@@ -169,12 +169,18 @@ bool Ec::handle_exc_ts (Exc_regs *r)
     return true;
 }
 
-bool Ec::handle_exc_gp (Exc_regs *)
+bool Ec::handle_exc_gp (Exc_regs *regs)
 {
     if (Cpu::hazard & HZD_TR) {
         Cpu::hazard &= ~HZD_TR;
         Gdt::unbusy_tss();
         asm volatile ("ltr %w0" : : "r" (SEL_TSS_RUN));
+        return true;
+    }
+
+    if (fixup (regs->REG(ip))) {
+        /* indicate skipped instruction via cflags -> Msr::guard_read/write */
+        regs->REG(fl) |= Cpu::EFL_CF;
         return true;
     }
 
