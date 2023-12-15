@@ -72,7 +72,7 @@ class Sys_regs
         };
 
         ALWAYS_INLINE
-        inline unsigned flags() const { return ARG_1 >> 4 & 0xf; }
+        inline unsigned flags() const { return ARG_1 >> 8 & 0xf; }
 
         ALWAYS_INLINE
         inline uint8 status() { return ARG_1 & 0xffu; }
