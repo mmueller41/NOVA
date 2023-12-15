@@ -43,7 +43,6 @@ Sc::Sc (Pd *own, mword sel, Ec *e) : Kobject (SC, static_cast<Space_obj *>(own),
 {
     trace (TRACE_SYSCALL, "SC:%p created (PD:%p Kernel)", this, own);
 
-    tsc = rdtsc();
 }
 
 Sc::Sc (Pd *own, mword sel, Ec *e, unsigned c, unsigned p, unsigned q) : Kobject (SC, static_cast<Space_obj *>(own), sel, 0x1, free, pre_free), ec (e), cpu (c), prio (static_cast<uint16>(p)), budget (Lapic::freq_tsc / 1000 * q), left (0)
@@ -59,7 +58,7 @@ Sc::Sc (Pd *own, Ec *e, unsigned c, Sc *x) : Kobject (SC, static_cast<Space_obj 
 Sc::Sc (Pd *own, Ec *e, Sc &s) : Kobject (SC, static_cast<Space_obj *>(own), s.node_base, 0x1, free, pre_free), ec (e), cpu (e->cpu), prio (s.prio), disable (s.disable), budget (s.budget), time (s.time), time_m (s.time_m), left (s.left)
 { }
 
-void Sc::ready_enqueue (uint64 t, bool inc_ref, bool use_left)
+void Sc::ready_enqueue (uint64 , bool inc_ref, bool use_left)
 {
     assert (prio < priorities);
     assert (cpu == Cpu::id);
@@ -92,7 +91,7 @@ void Sc::ready_enqueue (uint64 t, bool inc_ref, bool use_left)
     if (!left)
         left = budget;
 
-    tsc = t;
+    //tsc = t;
 }
 
 void Sc::ready_dequeue (uint64 t)
@@ -121,7 +120,7 @@ void Sc::ready_dequeue (uint64 t)
 void Sc::schedule (bool suspend, bool use_left)
 {
     do {
-        Counter::print<1,16> (++Counter::schedule, Console_vga::COLOR_LIGHT_CYAN, SPN_SCH);
+        //Counter::print<1,16> (++Counter::schedule, Console_vga::COLOR_LIGHT_CYAN, SPN_SCH);
 
         assert (current);
         assert (suspend || !current->prev);
@@ -172,9 +171,10 @@ void Sc::remote_enqueue(bool inc_ref)
 
         Sc::Rq *r = remote (cpu);
 
-        Lock_guard <Spinlock> guard (r->lock);
+        Lock_guard<Spinlock> guard(r->lock);
 
-        if (r->queue) {
+        if (r->queue)
+        {
             next = r->queue;
             prev = r->queue->prev;
             next->prev = prev->next = this;
@@ -187,7 +187,7 @@ void Sc::remote_enqueue(bool inc_ref)
 
 void Sc::rrq_handler()
 {
-    uint64 t = rdtsc();
+    //uint64 t = rdtsc();
 
     Lock_guard <Spinlock> guard (rq.lock);
 
@@ -200,10 +200,11 @@ void Sc::rrq_handler()
 
         ptr = ptr->next == ptr ? nullptr : ptr->next;
 
-        sc->ready_enqueue (t, false);
+        sc->ready_enqueue (0, false);
     }
 
     rq.queue = nullptr;
+
 }
 
 void Sc::rke_handler()
