@@ -37,6 +37,11 @@
 #include "amd_hpc.hpp"
 #include "intel_hpc.hpp"
 #include "pmc.hpp"
+#include "cell.hpp"
+#include "core_allocator.hpp"
+
+unsigned rpc_bench_cores = 0;
+unsigned long enqueue_delays[64];
 
 template <Sys_regs::Status S, bool T>
 void Ec::sys_finish()
@@ -128,6 +133,12 @@ void Ec::send_msg()
 
 void Ec::sys_call()
 {
+    /*extern unsigned rpc_bench_cores;
+    static unsigned count[NUM_CPU];
+    static unsigned long delays[NUM_CPU];
+    __atomic_fetch_add(&count[Cpu::id], 1, __ATOMIC_SEQ_CST);
+    
+    unsigned long start = rdtsc();*/
     Sys_call *s = static_cast<Sys_call *>(current->sys_regs());
 
     Kobject *obj = Space_obj::lookup (s->pt()).obj();
@@ -150,6 +161,13 @@ void Ec::sys_call()
         current->oom_call_cpu (current->pt_oom, current->pt_oom->id, sys_call, sys_call);
         sys_finish<Sys_regs::QUO_OOM>();
     }
+    /*unsigned long end = rdtsc();
+    delays[Cpu::id] += (end - start);
+
+    if (__atomic_load_n(&count[Cpu::id], __ATOMIC_SEQ_CST)%1000 == 0) {
+        trace(0, "{\"tas-delay\": %lu, \"lock\": \"Ec::syscall()\", \"cores\": %u},", delays[Cpu::id]/2, rpc_bench_cores);
+        delays[Cpu::id] = 0;
+    }*/
 
     if (EXPECT_FALSE (current->cpu != ec->xcpu))
         Ec::sys_xcpu_call();
@@ -472,6 +490,15 @@ void Ec::sys_create_ec()
 
     Ec *ec = new (*pd) Ec (Pd::current, r->sel(), pd, r->flags() & 1 ? static_cast<void (*)()>(send_msg<ret_user_iret>) : nullptr, r->cpu(), r->evt(), r->utcb(), r->esp(), pt);
 
+    /* If this pd is a cell and it has no worker registered for r->cpu yet, add ec as one of its workers. */ 
+    if (pd->cell && !(pd->cell->_workers[r->cpu()])) {
+        pd->cell->_workers[r->cpu()] = ec;
+    } else if (pd->cell && (pd->cell->_workers[r->cpu()])) {
+        /* Prevent a cell from starting more than one worker per CPU */
+        Ec::destroy(ec, *ec->pd);
+        sys_finish<Sys_regs::BAD_CPU>();
+    }
+
     if (!Space_obj::insert_root (pd->quota, ec)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
         Ec::destroy (ec, *ec->pd);
@@ -519,8 +546,18 @@ void Ec::sys_create_sc()
     }
 
     Sc *sc = new (*ec->pd) Sc (Pd::current, r->sel(), ec, ec->cpu, r->qpd().prio(), r->qpd().quantum());
-    if (!Space_obj::insert_root (pd->quota, sc)) {
-        trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
+
+    if (ec->pd->cell) {
+        if (ec->pd->cell->_worker_scs[ec->cpu] != nullptr) {
+            delete sc;
+            sys_finish<Sys_regs::BAD_CPU>();
+        }
+        ec->pd->cell->_worker_scs[ec->cpu] = sc;
+    }
+
+    if (!Space_obj::insert_root(pd->quota, sc))
+    {
+        trace(TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
         delete sc;
         sys_finish<Sys_regs::BAD_CAP>();
     }
@@ -938,10 +975,21 @@ void Ec::sys_ec_ctrl()
         case 10: /* hpc_read */
         {
             Sys_hpc_ctrl *hc = static_cast<Sys_hpc_ctrl *>(current->sys_regs());
-            Pmc *pmc = Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu, static_cast<Pmc::Type>(hc->type()));
+            rpc_bench_cores = static_cast<unsigned>(hc->sel());
+            
+            Pmc *pmc = nullptr;
+            //Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu, static_cast<Pmc::Type>(hc->type()));
 
             if (!pmc)
-                sys_finish<Sys_regs::BAD_PAR>();
+            {
+                if (hc->type() >= NUM_CPU) {
+                    r->set_value(Cpu::id);
+                }
+                else
+                    r->set_value(enqueue_delays[hc->type()]);
+                break;
+            }
+                //sys_finish<Sys_regs::BAD_PAR>();
 
             mword val = pmc->read();
             
@@ -1215,6 +1263,12 @@ void Ec::sys_assign_gsi()
 
 void Ec::sys_xcpu_call()
 {
+    /*extern unsigned rpc_bench_cores;
+    static unsigned count[NUM_CPU];
+    static unsigned long delays[NUM_CPU];
+    __atomic_fetch_add(&count[Cpu::id], 1, __ATOMIC_SEQ_CST);
+    
+    unsigned long start = rdtsc();*/
     Sys_call *s = static_cast<Sys_call *>(current->sys_regs());
 
     Capability cap = Space_obj::lookup (s->pt());
@@ -1237,15 +1291,29 @@ void Ec::sys_xcpu_call()
 
     Ec *xcpu_ec = new (*Pd::current) Ec (Pd::current, Pd::current, Ec::sys_call, ec->cpu, current);
     Sc *xcpu_sc = new (*xcpu_ec->pd) Sc (Pd::current, xcpu_ec, xcpu_ec->cpu, Sc::current);
+    /*unsigned long end = rdtsc();
+    delays[Cpu::id] += (end - start);
+
+    if (__atomic_load_n(&count[Cpu::id], __ATOMIC_SEQ_CST)%1000 == 0) {
+        trace(0, "{\"tas-delay\": %lu, \"lock\": \"Ec::sys_xcpu_call\", \"cores\": %u},", delays[Cpu::id]/2, rpc_bench_cores);
+        delays[Cpu::id] = 0;
+    }*/
 
     xcpu_sc->remote_enqueue();
     current->xcpu_sm->dn (false, 0);
+    
 
     ret_xcpu_reply();
 }
 
 void Ec::ret_xcpu_reply()
 {
+    /*extern unsigned rpc_bench_cores;
+    static unsigned count[NUM_CPU];
+    static unsigned long delays[NUM_CPU];
+    __atomic_fetch_add(&count[Cpu::id], 1, __ATOMIC_SEQ_CST);
+
+    unsigned long start = rdtsc();*/
     assert (current->xcpu_sm);
 
     Sm::destroy(current->xcpu_sm, *Pd::current);
@@ -1256,8 +1324,83 @@ void Ec::ret_xcpu_reply()
         current->regs.set_status (Sys_regs::SUCCESS, false);
     } else
         current->cont = ret_user_sysexit;
+    /*unsigned long end = rdtsc();
+    delays[Cpu::id] += (end - start);
+
+    if (__atomic_load_n(&count[Cpu::id], __ATOMIC_SEQ_CST)%1000 == 0) {
+        trace(0, "{\"tas-delay\": %lu, \"lock\": \"Ec::ret_xcpu_reply\", \"cores\": %u},", delays[Cpu::id]/2, rpc_bench_cores);
+        delays[Cpu::id] = 0;
+    }*/
 
     current->make_current();
+}
+
+void Ec::sys_yield()
+{
+    /*static unsigned long counter = 0;
+    counter++;*/
+    // trace(0, "Called sys_yield");
+    /*if (current->pd->mx_worker())
+    {
+        if (current->sp)
+            current->regs.set_sp(current->sp); // Throw stack away
+        current->regs.set_ip(current->pd->mx_worker());
+    }*/
+
+    //__atomic_store_n(current->pd->worker_channels[0], counter, __ATOMIC_SEQ_CST);
+
+    Cell *cell = current->pd->cell;
+    cell->yield_core(Cpu::id);
+    current->cont = sys_finish<Sys_regs::SUCCESS>;
+    Sc::schedule(true, false);
+}
+
+void Ec::sys_mxinit()
+{
+    check<sys_mxinit>(1);
+
+    Sys_mxinit *r = static_cast<Sys_mxinit *>(current->sys_regs());
+
+    Pd *pd = current->pd;
+    trace(0, "Setting channel for cell of prio %d to %lx", r->prio(), r->flag());
+    
+    unsigned long channel_gva = r->flag();
+
+    unsigned long *channel_hva = static_cast<unsigned long*>(Buddy::alloc(1, pd->quota, Buddy::FILL_0));
+
+    pd->Space_mem::insert(pd->quota, channel_gva, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, Buddy::ptr_to_phys(channel_hva));
+
+    pd->cell = new (*pd) Cell(pd, r->prio());
+    pd->mxinit(r->entry(), channel_hva);
+
+    sys_finish<Sys_regs::SUCCESS>();
+}
+
+void Ec::sys_alloc_cores()
+{
+    check<sys_alloc_cores>(1);
+
+    Sys_alloc_core *r = static_cast<Sys_alloc_core*>(current->sys_regs());
+
+    mword cores = core_alloc.alloc(current->pd->cell, r->count());
+    if (!cores) {
+        sys_finish<Sys_regs::BAD_CPU>();
+    }
+
+    current->pd->cell->add_cores(cores);
+
+    sys_finish<Sys_regs::SUCCESS>();
+}
+
+void Ec::sys_core_allocation()
+{
+    check<sys_core_allocation>(1);
+
+    Sys_core_alloc *r = static_cast<Sys_core_alloc*>(current->sys_regs());
+    Cell *my_cell = current->pd->cell;
+    r->set_val(my_cell->core_map);
+
+    sys_finish<Sys_regs::SUCCESS>();
 }
 
 extern "C"
@@ -1279,6 +1422,10 @@ void (*const syscall[])() =
     &Ec::sys_assign_pci,
     &Ec::sys_assign_gsi,
     &Ec::sys_pd_ctrl,
+    &Ec::sys_yield,
+    &Ec::sys_mxinit,
+    &Ec::sys_alloc_cores,
+    &Ec::sys_core_allocation,
 };
 
 template void Ec::sys_finish<Sys_regs::COM_ABT>();
