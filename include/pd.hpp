@@ -28,6 +28,7 @@
 #include "space_pio.hpp"
 
 class Pmc;
+class Cell;
 class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, public Space_obj
 {
     private:
@@ -69,6 +70,8 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         uint16 rids[7];
         uint16 rids_u  { 0 };
 
+        mword mx_worker_ip{0};  // Entrypoint for MxTasking's workers
+
         static_assert (sizeof(rids_u) * 8 >= sizeof(rids) / sizeof(rids[0]), "rids_u too small");
 
         Pd(const Pd&);
@@ -76,6 +79,7 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
     public:
         static Pd *current CPULOCAL_HOT;
         static Pd kern, root;
+        unsigned long *worker_channels{nullptr};
 
         Quota quota { };
 
@@ -86,9 +90,11 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         Slab_cache ec_cache;
         Slab_cache fpu_cache;
         Slab_cache pmc_cache;
+        Slab_cache cell_cache;
 
         Pmc *pmcs[NUM_CPU];
         bool pmc_user = false;
+        Cell *cell{nullptr};
 
         INIT
         Pd (Pd *);
@@ -191,6 +197,15 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
             }
         }
 
+        ALWAYS_INLINE
+        inline void mxinit(mword eip, unsigned long *channel) 
+        { 
+            mx_worker_ip = eip;
+            worker_channels = channel;
+        }
+
+        ALWAYS_INLINE
+        inline mword mx_worker() { return mx_worker_ip; }
 
         ALWAYS_INLINE
         static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }

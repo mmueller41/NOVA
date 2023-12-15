@@ -42,12 +42,14 @@ class Sm;
 class Pt;
 class Sys_ec_ctrl;
 class Pmc;
+class Cell;
 class Ec : public Kobject, public Refcount, public Queue<Sc>
 {
     friend class Queue<Ec>;
     friend class Sc;
     friend class Pt;
     friend class Pmc;
+    friend class Cell;
 
 private:
     void (*cont)() ALIGNED(16);
@@ -59,6 +61,8 @@ private:
     Ec *prev;
     Ec *next;
     Fpu *fpu;
+
+    mword sp{0};
     union
     {
         struct
@@ -240,7 +244,6 @@ private:
         static Ec *ec_idle CPULOCAL;
         static Ec *pmc_owner CPULOCAL_HOT;
 
-
         Ec (Pd *, void (*)(), unsigned);
         Ec (Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
         Ec (Pd *, Pd *, void (*f)(), unsigned, Ec *);
@@ -281,6 +284,12 @@ private:
         ALWAYS_INLINE NORETURN
         inline void make_current()
         {
+            /*extern unsigned rpc_bench_cores;
+            static unsigned count[NUM_CPU];
+            static unsigned long delays[NUM_CPU];
+            __atomic_fetch_add(&count[Cpu::id], 1, __ATOMIC_SEQ_CST);
+
+            unsigned long start = rdtsc();*/
             if (EXPECT_FALSE (current->del_rcu()))
                 Rcu::call (current);
 
@@ -314,6 +323,13 @@ private:
             assert (ok);
 
             Tss::run.sp0 = reinterpret_cast<mword>(exc_regs() + 1);
+            /*unsigned long end = rdtsc();
+            delays[Cpu::id] += (end - start);
+
+            if (__atomic_load_n(&count[Cpu::id], __ATOMIC_SEQ_CST)%1000 == 0) {
+                trace(0, "{\"tas-delay\": %lu, \"lock\": \"Ec::make_current()\", \"cores\": %u},", delays[Cpu::id]/2, rpc_bench_cores);
+                delays[Cpu::id] = 0;
+            }*/
 
             pd->make_current();
 
@@ -503,6 +519,18 @@ private:
 
         NORETURN
         static void sys_xcpu_call();
+
+        NORETURN
+        static void sys_yield();
+
+        NORETURN
+        static void sys_mxinit();
+
+        NORETURN
+        static void sys_alloc_cores();
+
+        NORETURN
+        static void sys_core_allocation();
 
         template <void (*)()>
         NORETURN
