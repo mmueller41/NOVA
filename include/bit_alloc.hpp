@@ -49,7 +49,7 @@ class Bit_alloc
         }
 
         ALWAYS_INLINE
-        inline mword alloc()
+        inline mword alloc_with_mask(mword bitmask[C/8/sizeof(mword)])
         {
             for (mword i = ACCESS_ONCE(last), j = 0; j < MAX; i++, j++)
             {
@@ -58,7 +58,7 @@ class Bit_alloc
                 if (ACCESS_ONCE(bits[i]) == ~0UL)
                     continue;
 
-                long b = bit_scan_forward (~bits[i]);
+                long b = bit_scan_forward (~(bits[i] | bitmask[i]));
                 if (b < 0 || b >= BITS_CNT || Atomic::test_set_bit (bits[i], b)) {
                     j--;
                     i--;
@@ -72,6 +72,12 @@ class Bit_alloc
             }
 
             return INV;
+        }
+
+        ALWAYS_INLINE
+        inline mword alloc()
+        {
+            return alloc_with_mask(bits);
         }
 
         ALWAYS_INLINE
