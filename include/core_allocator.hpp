@@ -37,12 +37,18 @@ class Core_allocator
             for (; cores > 0; cores--)
             {
                 unsigned int cpu_id = 0x0;
-                while (!(cpu_id = static_cast<unsigned int>(free_map.alloc())))
-                {
-                    Cell *victim = cell_of_lowest_prio();
-                    if (!victim || victim->_prio >= claimant->_prio || victim == claimant)
-                        return core_allocation;
-                    victim->reclaim_cores(cores);
+
+                /* First we try to allocate a core from the pre-reserved cores of clamaint, only
+                if the claiming cell has exhaused its reserved cores, we try to allocate a core from
+                the global core allocator. This way the cores initially assigned to the cell by Hoitaja are used first, before allocating cores from other cells. */
+                if (!(cpu_id = static_cast<unsigned int>(claimant->core_alloc.alloc()))) {
+                    while (!(cpu_id = static_cast<unsigned int>(free_map.alloc())))
+                    {
+                        Cell *victim = cell_of_lowest_prio();
+                        if (!victim || victim->_prio >= claimant->_prio || victim == claimant)
+                            return core_allocation;
+                        victim->reclaim_cores(cores);
+                    }
                 }
                 Atomic::test_set_bit<mword>(core_allocation, cpu_id);
                 trace(0, "Allocated core %d: allocation=%lx", cpu_id, core_allocation);
