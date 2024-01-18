@@ -1370,7 +1370,6 @@ void Ec::sys_mxinit()
 
     pd->Space_mem::insert(pd->quota, channel_gva, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, Buddy::ptr_to_phys(channel_hva));
 
-    pd->cell = new (*pd) Cell(pd, r->prio());
     pd->mxinit(r->entry(), channel_hva);
 
     sys_finish<Sys_regs::SUCCESS>();
@@ -1403,6 +1402,51 @@ void Ec::sys_core_allocation()
     sys_finish<Sys_regs::SUCCESS>();
 }
 
+void Ec::sys_create_cell()
+{
+    check<sys_create_cell>(1);
+
+    Sys_create_cell *r = static_cast<Sys_create_cell *>(current->sys_regs());
+
+    Capability cap = Space_obj::lookup(r->sel());
+    if (EXPECT_FALSE (cap.obj()->type() != Kobject::PD)) {
+        trace(TRACE_ERROR, "%s: Bad PD CAP (%#lx)", __func__, r->sel());
+        sys_finish<Sys_regs::BAD_CAP>();
+    }
+    Pd *pd = static_cast<Pd *>(cap.obj());
+    pd->cell = new (*pd) Cell(pd, r->prio(), r->start(), r->end());
+
+    trace(0, "Created new cell of prio %d in range %lu - %lu: ", static_cast<signed short>(r->prio()), r->start(), r->end());
+
+    sys_finish<Sys_regs::SUCCESS>();
+}
+
+void Ec::sys_cell_ctrl()
+{
+    check<sys_cell_ctrl>(1);
+
+    Sys_cell_ctrl *r = static_cast<Sys_cell_ctrl *>(current->sys_regs());
+
+    Capability cap = Space_obj::lookup(r->sel());
+    if (EXPECT_FALSE (cap.obj()->type() != Kobject::PD)) {
+        trace(TRACE_ERROR, "%s: Bad PD CAP (%#lx)", __func__, r->sel());
+        sys_finish<Sys_regs::BAD_CAP>();
+    }
+    Pd *pd = static_cast<Pd *>(cap.obj());
+    Cell *cell = pd->cell;
+
+    switch (r->flags()) {
+        case Sys_cell_ctrl::SHRINK:
+            cell->shrink(r->start(), r->end());
+            break;
+        case Sys_cell_ctrl::GROW:
+            cell->grow(r->start(), r->end());
+            break;
+    }
+
+    sys_finish<Sys_regs::SUCCESS>();
+}
+
 extern "C"
 void (*const syscall[])() =
 {
@@ -1426,6 +1470,8 @@ void (*const syscall[])() =
     &Ec::sys_mxinit,
     &Ec::sys_alloc_cores,
     &Ec::sys_core_allocation,
+    &Ec::sys_create_cell,
+    &Ec::sys_cell_ctrl,
 };
 
 template void Ec::sys_finish<Sys_regs::COM_ABT>();

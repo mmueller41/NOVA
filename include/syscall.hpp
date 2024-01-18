@@ -408,3 +408,38 @@ class Sys_alloc_core : public Sys_regs
         ALWAYS_INLINE
         inline unsigned int count() const { return static_cast<unsigned int>(ARG_2); }
 };
+
+class Sys_create_cell : public Sys_regs
+{
+    public:
+        ALWAYS_INLINE
+        inline unsigned long sel() const { return ARG_1 >>12; }
+        
+        ALWAYS_INLINE
+        inline unsigned short prio() const { return static_cast<unsigned short>(flags()); }
+
+        ALWAYS_INLINE
+        inline unsigned long start() const { return ARG_2; }
+
+        ALWAYS_INLINE
+        inline unsigned long end() const { return ARG_3; }
+};
+
+class Sys_cell_ctrl : public Sys_regs
+{
+    public:
+        ALWAYS_INLINE
+        inline unsigned long sel() const { return ARG_1 >> 12; }
+
+        ALWAYS_INLINE
+        inline unsigned long start() const { return ARG_2; }
+
+        ALWAYS_INLINE
+        inline unsigned long end() const { return ARG_3; }
+
+        enum
+        {
+            SHRINK = 0,
+            GROW = 1,
+        };
+};

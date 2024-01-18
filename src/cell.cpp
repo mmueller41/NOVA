@@ -32,3 +32,13 @@ void Cell::reclaim_cores(unsigned int cores)
     while (__atomic_load_n(&core_map, __ATOMIC_SEQ_CST))
         __builtin_ia32_pause();
 }
+
+void Cell::grow(unsigned long start, unsigned long end)
+{
+    trace(0, "Grew cell to range: %lu - %lu", start, end);
+}
+
+void Cell::shrink(unsigned long start, unsigned long end)
+{
+    trace(0, "Shrank cell to range: %lu - %lu", start, end);
+}

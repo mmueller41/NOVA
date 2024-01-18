@@ -532,6 +532,12 @@ private:
         NORETURN
         static void sys_core_allocation();
 
+        NORETURN
+        static void sys_create_cell();
+
+        NORETURN
+        static void sys_cell_ctrl();
+
         template <void (*)()>
         NORETURN
         static void sys_xcpu_call_oom();
