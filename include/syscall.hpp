@@ -419,10 +419,10 @@ class Sys_create_cell : public Sys_regs
         inline unsigned short prio() const { return static_cast<unsigned short>(flags()); }
 
         ALWAYS_INLINE
-        inline unsigned long start() const { return ARG_2; }
+        inline unsigned long mask() const { return ARG_2; }
 
         ALWAYS_INLINE
-        inline unsigned long end() const { return ARG_3; }
+        inline unsigned long start() const { return ARG_3; }
 };
 
 class Sys_cell_ctrl : public Sys_regs
@@ -432,14 +432,24 @@ class Sys_cell_ctrl : public Sys_regs
         inline unsigned long sel() const { return ARG_1 >> 12; }
 
         ALWAYS_INLINE
-        inline unsigned long start() const { return ARG_2; }
+        inline unsigned long mask() const { return ARG_2; }
 
         ALWAYS_INLINE
-        inline unsigned long end() const { return ARG_3; }
+        inline unsigned long index() const { return ARG_3; }
 
         enum
         {
             SHRINK = 0,
             GROW = 1,
+        };
+};
+
+class Sys_console_ctrl : public Sys_regs
+{
+    public:
+        enum
+        {
+            LOCK = 0,
+            UNLOCK = 1,
         };
 };
