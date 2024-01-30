@@ -7,10 +7,12 @@
 #include "buddy.hpp"
 
 extern Cell *cells[64];
+class Core_allocator;
 
 class Cell : public List<Cell>
 {
     friend class Ec;
+    friend class Core_allocator;
 
 private:
     Pd *_pd;
@@ -22,13 +24,15 @@ private:
 public:
     volatile mword cores_to_reclaim{0};
     unsigned int _prio;
-    Bit_alloc<NUM_CPU, 0> core_alloc{};
+    mword borrowed_cores{0};
+    mword core_mask[NUM_CPU/(sizeof(mword) *8)];
 
-    Cell(Pd *pd, unsigned short prio) : List<Cell>(cells[prio]), _pd(pd), _prio(prio) { _pd->cell = this; }
+    Cell(Pd *pd, unsigned short prio) : List<Cell>(cells[prio]), _pd(pd),  _prio{prio} { _pd->cell = this; }
 
-    Cell(Pd *pd, unsigned short prio, mword start, mword end) : List<Cell>(cells[prio]), _pd(pd), _prio(prio) { _pd->cell = this;
-        core_alloc.reserve(0, start);
-        core_alloc.reserve(end, NUM_CPU - end);
+    Cell(Pd *pd, unsigned short prio, mword mask, mword start) : List<Cell>(cells[prio]), _pd(pd), _prio(prio) { _pd->cell = this;
+        core_mask[start] = mask;
+
+        trace(0, "Created new cell %p wtih initial allocation: %lx", this, core_mask[0]);
     }
 
     void reclaim_cores(unsigned int cores);
@@ -37,13 +41,14 @@ public:
     {
         Atomic::test_clr_bit<mword>(core_map, core);
         Atomic::test_clr_bit<volatile mword>(cores_to_reclaim, core);
+        borrowed_cores &= ~(1UL << core);
     }
 
     static void *operator new (size_t, Pd &pd) {
         return pd.cell_cache.alloc(pd.quota);
     }
 
-    void shrink(unsigned long start, unsigned long end);
+    void update(mword mask, mword offset);
 
-    void grow(unsigned long start, unsigned long end);
+    unsigned yield_cores(mword cpu_map);
 };
