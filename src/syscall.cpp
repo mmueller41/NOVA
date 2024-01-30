@@ -490,11 +490,9 @@ void Ec::sys_create_ec()
 
     Ec *ec = new (*pd) Ec (Pd::current, r->sel(), pd, r->flags() & 1 ? static_cast<void (*)()>(send_msg<ret_user_iret>) : nullptr, r->cpu(), r->evt(), r->utcb(), r->esp(), pt);
 
-    /* If this pd is a cell and it has no worker registered for r->cpu yet, add ec as one of its workers. */ 
-    if (pd->cell && !(pd->cell->_workers[r->cpu()])) {
-        pd->cell->_workers[r->cpu()] = ec;
-    } else if (pd->cell && (pd->cell->_workers[r->cpu()])) {
-        /* Prevent a cell from starting more than one worker per CPU */
+    if (pd->worker_channels && pd->cell->_worker_scs[r->cpu()]) {
+        //core_alloc.reserve(pd->cell, r->cpu());
+        trace(TRACE_ERROR, "%s: A worker is already registered for CPU %u", __func__, r->cpu());
         Ec::destroy(ec, *ec->pd);
         sys_finish<Sys_regs::BAD_CPU>();
     }
@@ -547,12 +545,17 @@ void Ec::sys_create_sc()
 
     Sc *sc = new (*ec->pd) Sc (Pd::current, r->sel(), ec, ec->cpu, r->qpd().prio(), r->qpd().quantum());
 
-    if (ec->pd->cell) {
+    if (ec->pd->cell && ec->pd->worker_channels) {
         if (ec->pd->cell->_worker_scs[ec->cpu] != nullptr) {
+            trace(TRACE_ERROR, "%s: A worker SC has already been created for CPU %d", __func__, ec->cpu);
             delete sc;
             sys_finish<Sys_regs::BAD_CPU>();
         }
+        trace(0, "Registering worker for cell %p at CPU %d ", ec->pd->cell, ec->cpu);
         ec->pd->cell->_worker_scs[ec->cpu] = sc;
+        ec->pd->cell->core_map |= (1UL << ec->cpu);
+        /* Reclaim the core <ec->cpu>, for the case it has been lend to another cell. */
+        core_alloc.reserve(ec->pd->cell, ec->cpu);
     }
 
     if (!Space_obj::insert_root(pd->quota, sc))
@@ -1349,8 +1352,16 @@ void Ec::sys_yield()
 
     //__atomic_store_n(current->pd->worker_channels[0], counter, __ATOMIC_SEQ_CST);
 
+    if (!current->pd->cell) {
+        sys_finish<Sys_regs::BAD_CAP>();
+    }
+
     Cell *cell = current->pd->cell;
-    cell->yield_core(Cpu::id);
+    if (current->sys_regs()->flags()) {
+        cell->yield_core(Cpu::id);
+        core_alloc.yield(Cpu::id);
+    }
+
     current->cont = sys_finish<Sys_regs::SUCCESS>;
     Sc::schedule(true, false);
 }
@@ -1381,6 +1392,9 @@ void Ec::sys_alloc_cores()
 
     Sys_alloc_core *r = static_cast<Sys_alloc_core*>(current->sys_regs());
 
+    if (!current->pd->cell)
+        sys_finish<Sys_regs::BAD_CAP>();
+
     mword cores = core_alloc.alloc(current->pd->cell, r->count());
     if (!cores) {
         sys_finish<Sys_regs::BAD_CPU>();
@@ -1397,7 +1411,7 @@ void Ec::sys_core_allocation()
 
     Sys_core_alloc *r = static_cast<Sys_core_alloc*>(current->sys_regs());
     Cell *my_cell = current->pd->cell;
-    r->set_val(my_cell->core_map);
+    r->set_val(__atomic_load_n(&my_cell->core_map, __ATOMIC_SEQ_CST));
 
     sys_finish<Sys_regs::SUCCESS>();
 }
@@ -1408,15 +1422,21 @@ void Ec::sys_create_cell()
 
     Sys_create_cell *r = static_cast<Sys_create_cell *>(current->sys_regs());
 
+    trace(0, "Creating new cell with mask %lx and offset %lu ", r->mask(), r->start());
+
     Capability cap = Space_obj::lookup(r->sel());
     if (EXPECT_FALSE (cap.obj()->type() != Kobject::PD)) {
         trace(TRACE_ERROR, "%s: Bad PD CAP (%#lx)", __func__, r->sel());
         sys_finish<Sys_regs::BAD_CAP>();
     }
     Pd *pd = static_cast<Pd *>(cap.obj());
-    pd->cell = new (*pd) Cell(pd, r->prio(), r->start(), r->end());
+    if (!pd->cell)
+        pd->cell = new (*pd) Cell(pd, r->prio(), r->mask(), r->start());
+    else {
+        pd->cell->update(r->mask(), r->start());
+    }
 
-    trace(0, "Created new cell of prio %d in range %lu - %lu: ", static_cast<signed short>(r->prio()), r->start(), r->end());
+    core_alloc.set_owner(pd->cell, r->mask(), r->start() * sizeof(mword) * 8);
 
     sys_finish<Sys_regs::SUCCESS>();
 }
@@ -1434,16 +1454,27 @@ void Ec::sys_cell_ctrl()
     }
     Pd *pd = static_cast<Pd *>(cap.obj());
     Cell *cell = pd->cell;
+    cell->update(r->mask(), r->index());
+
+    sys_finish<Sys_regs::SUCCESS>();
+}
+
+void Ec::sys_console_ctrl()
+{
+    check<sys_console_ctrl>(1);
+
+    Sys_console_ctrl *r = static_cast<Sys_console_ctrl *>(current->sys_regs());
 
     switch (r->flags()) {
-        case Sys_cell_ctrl::SHRINK:
-            cell->shrink(r->start(), r->end());
+        case Sys_console_ctrl::LOCK: {
+            Console::lock_console();
             break;
-        case Sys_cell_ctrl::GROW:
-            cell->grow(r->start(), r->end());
+        }
+        case Sys_console_ctrl::UNLOCK: {
+            Console::unlock_console();
             break;
+        }
     }
-
     sys_finish<Sys_regs::SUCCESS>();
 }
 
@@ -1472,6 +1503,7 @@ void (*const syscall[])() =
     &Ec::sys_core_allocation,
     &Ec::sys_create_cell,
     &Ec::sys_cell_ctrl,
+    &Ec::sys_console_ctrl,
 };
 
 template void Ec::sys_finish<Sys_regs::COM_ABT>();
