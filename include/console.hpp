@@ -84,4 +84,14 @@ class Console
                 (*ptr)->reenable();
             }
         }
+
+        static void lock_console()
+        {
+            lock.lock();
+        }
+
+        static void unlock_console()
+        {
+            lock.unlock();
+        }
 };
