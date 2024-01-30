@@ -49,16 +49,19 @@ class Bit_alloc
         }
 
         ALWAYS_INLINE
-        inline mword alloc_with_mask(mword bitmask[C/8/sizeof(mword)])
+        inline mword alloc_with_mask(mword bitmask[C/8/sizeof(mword)], bool inverse = false)
         {
             for (mword i = ACCESS_ONCE(last), j = 0; j < MAX; i++, j++)
             {
                 i %= MAX;
+                
+                mword mask = ~bits[i] & (inverse ? ~bitmask[i] : bitmask[i]);
 
-                if (ACCESS_ONCE(bits[i]) == ~0UL)
+                if (mask == 0UL)
                     continue;
 
-                long b = bit_scan_forward (~(bits[i] | bitmask[i]));
+
+                long b = bit_scan_forward (mask);
                 if (b < 0 || b >= BITS_CNT || Atomic::test_set_bit (bits[i], b)) {
                     j--;
                     i--;
@@ -77,7 +80,7 @@ class Bit_alloc
         ALWAYS_INLINE
         inline mword alloc()
         {
-            return alloc_with_mask(bits);
+            return alloc_with_mask(bits, true);
         }
 
         ALWAYS_INLINE
@@ -91,6 +94,19 @@ class Bit_alloc
 
             while (ACCESS_ONCE(bits[i]) & (1ul << b))
                  Atomic::test_clr_bit (ACCESS_ONCE(bits[i]), b);
+        }
+
+        ALWAYS_INLINE
+        inline bool reserve(mword const id)
+        {
+            
+            if (id == INV || id >= C)
+                return false;
+
+            mword i = id / BITS_CNT;
+            mword b = id % BITS_CNT;
+
+            return Atomic::test_set_bit (ACCESS_ONCE(bits[i]), b);
         }
 
         void reserve(mword const start, mword const count)
@@ -119,5 +135,16 @@ class Bit_alloc
                 cnt -= bc;
                 b = 0;
             }
+        }
+
+        void reserve_with_mask(mword const mask, mword const offset)
+        {
+            Atomic::set_mask(bits[offset], mask);
+        }
+
+        void dump_trace()
+        {
+            for (int i = 0; i < MAX; i++)
+                trace(0, "bitmap[%d]: %lx", i, bits[i]);
         }
 };
