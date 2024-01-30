@@ -402,7 +402,8 @@ private:
                 bool ok = Sc::current->add_ref();
                 assert (ok);
 
-                enqueue (Sc::current);
+                assert(Sc::current);
+                enqueue(Sc::current);
             }
 
             Sc::schedule (true);
@@ -537,6 +538,9 @@ private:
 
         NORETURN
         static void sys_cell_ctrl();
+
+        NORETURN
+        static void sys_console_ctrl();
 
         template <void (*)()>
         NORETURN
