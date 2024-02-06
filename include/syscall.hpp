@@ -35,7 +35,7 @@ class Sys_call : public Sys_regs
         };
 
         ALWAYS_INLINE
-        inline unsigned long pt() const { return ARG_1 >> 12; }
+        inline unsigned long pt() const { return ARG_2; /* ARG_1 >> 12;*/ }
 };
 
 class Sys_create_pd : public Sys_regs
@@ -402,6 +402,15 @@ class Sys_core_alloc : public Sys_regs
         }
 };
 
+class Sys_cpuid : public Sys_regs
+{
+    public:
+        ALWAYS_INLINE
+        inline void set_val(unsigned long val) {
+            ARG_3 = val;
+        }
+};
+
 class Sys_alloc_core : public Sys_regs
 {
     public:
@@ -452,4 +461,17 @@ class Sys_console_ctrl : public Sys_regs
             LOCK = 0,
             UNLOCK = 1,
         };
+};
+
+class Sys_yield : public Sys_regs
+{
+    public:
+        enum
+        {
+            RETURN_CORE = 0,
+            SLEEP = 1,
+        };
+
+        ALWAYS_INLINE
+        inline unsigned op() const { return flags(); }
 };

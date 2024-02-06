@@ -490,11 +490,22 @@ void Ec::sys_create_ec()
 
     Ec *ec = new (*pd) Ec (Pd::current, r->sel(), pd, r->flags() & 1 ? static_cast<void (*)()>(send_msg<ret_user_iret>) : nullptr, r->cpu(), r->evt(), r->utcb(), r->esp(), pt);
 
-    if (pd->worker_channels && pd->cell->_worker_scs[r->cpu()]) {
+    if (pd->worker_channels && pd->cell->_workers[r->cpu()]) {
         //core_alloc.reserve(pd->cell, r->cpu());
-        trace(TRACE_ERROR, "%s: A worker is already registered for CPU %u", __func__, r->cpu());
+        trace(TRACE_ERROR, "%s: A worker is already registered for %p at CPU %u", __func__, pd->cell, r->cpu());
         Ec::destroy(ec, *ec->pd);
         sys_finish<Sys_regs::BAD_CPU>();
+    }
+
+    if (pd->worker_channels && !pd->cell->_workers[r->cpu()]) {
+        pd->cell->_workers[r->cpu()] = ec;
+        Sm *sm = new (*pd) Sm(Pd::current, 0, 0);
+        if (!sm) {
+            trace(TRACE_ERROR, "%s: Unable to create worker for %p at CPU %u", __func__, pd->cell, r->cpu());
+            Ec::destroy(ec, *ec->pd);
+            sys_finish<Sys_regs::QUO_OOM>();
+        }
+        pd->cell->_worker_sms[r->cpu()] = sm;
     }
 
     if (!Space_obj::insert_root (pd->quota, ec)) {
@@ -543,7 +554,11 @@ void Ec::sys_create_sc()
         sys_finish<Sys_regs::BAD_PAR>();
     }
 
-    Sc *sc = new (*ec->pd) Sc (Pd::current, r->sel(), ec, ec->cpu, r->qpd().prio(), r->qpd().quantum());
+    /* All worker SCs of all cells shall have the same priority, because
+       the core allocator assumes that a worker thread cannot starve due to having a lower priority than another on the same core. */
+    unsigned int prio = (ec->pd->cell) ? 64 : r->qpd().prio();
+
+    Sc *sc = new (*ec->pd) Sc (Pd::current, r->sel(), ec, ec->cpu, prio, r->qpd().quantum());
 
     if (ec->pd->cell && ec->pd->worker_channels) {
         if (ec->pd->cell->_worker_scs[ec->cpu] != nullptr) {
@@ -551,11 +566,7 @@ void Ec::sys_create_sc()
             delete sc;
             sys_finish<Sys_regs::BAD_CPU>();
         }
-        trace(0, "Registering worker for cell %p at CPU %d ", ec->pd->cell, ec->cpu);
         ec->pd->cell->_worker_scs[ec->cpu] = sc;
-        ec->pd->cell->core_map |= (1UL << ec->cpu);
-        /* Reclaim the core <ec->cpu>, for the case it has been lend to another cell. */
-        core_alloc.reserve(ec->pd->cell, ec->cpu);
     }
 
     if (!Space_obj::insert_root(pd->quota, sc))
@@ -1340,30 +1351,41 @@ void Ec::ret_xcpu_reply()
 
 void Ec::sys_yield()
 {
-    /*static unsigned long counter = 0;
-    counter++;*/
-    // trace(0, "Called sys_yield");
-    /*if (current->pd->mx_worker())
-    {
-        if (current->sp)
-            current->regs.set_sp(current->sp); // Throw stack away
-        current->regs.set_ip(current->pd->mx_worker());
-    }*/
+    
+    Sys_yield *r = static_cast<Sys_yield *>(current->sys_regs());
+    Cell *cell = current->pd->cell;
 
-    //__atomic_store_n(current->pd->worker_channels[0], counter, __ATOMIC_SEQ_CST);
-
-    if (!current->pd->cell) {
+    if (!cell) {
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
-    Cell *cell = current->pd->cell;
-    if (current->sys_regs()->flags()) {
-        cell->yield_core(Cpu::id);
-        core_alloc.yield(Cpu::id);
+    /* Always remove the yielded core from the cell's core map first */
+    cell->yield_core(Cpu::id);
+
+    switch (r->op()) {
+        /* If the worker thread shall sleep we release the core */
+        case Sys_yield::RETURN_CORE: {
+            /* If, however, the core shall be returned to its owner,
+            we return it via the core allocator and let it activate the
+            owner's corresponding worker. There is no need to release the core, as it would be allocated immediately by its owner anyway. */
+            if (core_alloc.borrowed(cell, Cpu::id)) {
+                core_alloc.return_core(cell, Cpu::id);
+                trace(0, "Cell %p returned CPU %u, cmap=%lu", cell, Cpu::id, cell->core_map);
+            }
+            break;
+        }
+        case Sys_yield::SLEEP: {
+            if (core_alloc.is_owner(cell, Cpu::id))
+                core_alloc.yield(Cpu::id);
+            trace(0, "Cell %p yielded CPU %d", cell, Cpu::id);
+            break;
+        }
+
     }
 
-    current->cont = sys_finish<Sys_regs::SUCCESS>;
-    Sc::schedule(true, false);
+    /* Put the yielding worker to sleep */
+    cell->_worker_sms[Cpu::id]->dn(false, 0);
+    sys_finish<Sys_regs::SUCCESS>();
 }
 
 void Ec::sys_mxinit()
@@ -1390,17 +1412,20 @@ void Ec::sys_alloc_cores()
 {
     check<sys_alloc_cores>(1);
 
-    Sys_alloc_core *r = static_cast<Sys_alloc_core*>(current->sys_regs());
 
-    if (!current->pd->cell)
+    Sys_alloc_core *r = static_cast<Sys_alloc_core*>(current->sys_regs());
+    Cell *cell = current->pd->cell;
+
+    if (!cell)
         sys_finish<Sys_regs::BAD_CAP>();
 
-    mword cores = core_alloc.alloc(current->pd->cell, r->count());
+    mword cores = core_alloc.alloc(cell, r->count());
     if (!cores) {
         sys_finish<Sys_regs::BAD_CPU>();
     }
 
-    current->pd->cell->add_cores(cores);
+    cell->add_cores(cores);
+
 
     sys_finish<Sys_regs::SUCCESS>();
 }
@@ -1430,13 +1455,18 @@ void Ec::sys_create_cell()
         sys_finish<Sys_regs::BAD_CAP>();
     }
     Pd *pd = static_cast<Pd *>(cap.obj());
-    if (!pd->cell)
-        pd->cell = new (*pd) Cell(pd, r->prio(), r->mask(), r->start());
-    else {
+    if (!pd->cell) {
+        Sm *sm = new (*pd) Sm(pd, 0);
+        pd->cell = new (*pd) Cell(pd, r->prio(), *sm, r->mask(), r->start());
+    } else {
         pd->cell->update(r->mask(), r->start());
     }
 
+    unsigned long first_cpu = bit_scan_forward(r->mask());
+
     core_alloc.set_owner(pd->cell, r->mask(), r->start() * sizeof(mword) * 8);
+    core_alloc.reserve(pd->cell, first_cpu);
+    trace(0, "Reserved CPU %ld for cell %p", first_cpu, pd->cell);
 
     sys_finish<Sys_regs::SUCCESS>();
 }
@@ -1478,6 +1508,16 @@ void Ec::sys_console_ctrl()
     sys_finish<Sys_regs::SUCCESS>();
 }
 
+void Ec::sys_cpuid()
+{
+    check<sys_cpuid>(1);
+
+    Sys_cpuid *r = static_cast<Sys_cpuid *>(current->sys_regs());
+    r->set_val(Cpu::id);
+
+    sys_finish<Sys_regs::SUCCESS>();
+}
+
 extern "C"
 void (*const syscall[])() =
 {
@@ -1504,6 +1544,7 @@ void (*const syscall[])() =
     &Ec::sys_create_cell,
     &Ec::sys_cell_ctrl,
     &Ec::sys_console_ctrl,
+    &Ec::sys_cpuid,
 };
 
 template void Ec::sys_finish<Sys_regs::COM_ABT>();
