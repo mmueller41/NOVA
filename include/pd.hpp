@@ -79,7 +79,7 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
     public:
         static Pd *current CPULOCAL_HOT;
         static Pd kern, root;
-        unsigned long *worker_channels{nullptr};
+        unsigned long volatile *worker_channels{nullptr};
 
         Quota quota { };
 
