@@ -542,6 +542,9 @@ private:
         NORETURN
         static void sys_console_ctrl();
 
+        NORETURN
+        static void sys_cpuid();
+
         template <void (*)()>
         NORETURN
         static void sys_xcpu_call_oom();
