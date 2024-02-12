@@ -31,6 +31,8 @@
 #include "vtlb.hpp"
 #include "sm.hpp"
 #include "pt.hpp"
+#include "core_allocator.hpp"
+#include "cell.hpp"
 
 Ec *Ec::current, *Ec::fpowner, *Ec::ec_idle, *Ec::pmc_owner;
 Sm *Ec::auth_suspend;
@@ -181,6 +183,10 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, Pt *pt) : Kobject (E
 //De-constructor
 Ec::~Ec()
 {
+    if (is_worker && cell()) {
+        core_alloc.yield(cell(), cpu);
+        cell()->remove_worker(cpu);
+    }
     if (xcpu_sm) {
         Sm::destroy(xcpu_sm, *pd);
         xcpu_sm = nullptr;

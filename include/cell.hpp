@@ -38,6 +38,10 @@ public:
         trace(0, "Created new cell %p wtih initial allocation: %lx", this, core_mask[0]);
     }
 
+    Cell(const Cell& copy) : List<Cell>(cells[copy._prio]), _pd(copy._pd), _prio(copy._prio), _yield_sm(copy._yield_sm) {
+
+    }
+
     void reclaim_cores(unsigned int cores);
     void add_cores(mword cpu_map);
     void yield_core(unsigned int core)
@@ -52,7 +56,8 @@ public:
     ALWAYS_INLINE
     inline void wake_core(unsigned int core)
     {
-        _worker_sms[core]->up();
+        if (_worker_sms[core])
+            _worker_sms[core]->up();
     }
 
     static void *operator new (size_t, Pd &pd) {
@@ -61,5 +66,21 @@ public:
 
     void update(mword mask, mword offset);
 
-    unsigned yield_cores(mword cpu_map);
+    unsigned yield_cores(mword cpu_map, bool release=false);
+
+    bool yielded(unsigned cpu) {
+        return (core_map & (1ul << cpu)) && _workers[cpu]->blocked();
+    }
+
+    void remove_worker(unsigned cpu);
+
+    Cell &operator=(const Cell& other) {
+        this->_prio = other._prio;
+        this->core_map = other.core_map;
+
+        return *this;
+    }
+
+    ~Cell();
+
 };

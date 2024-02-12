@@ -456,6 +456,8 @@ void Pd::assign_rid(uint16 const r)
 
 Pd::~Pd()
 {
+    cell->~Cell();
+
     pre_free(this);
 
     Space_mem::hpt.clear(quota, Space_mem::hpt.dest_hpt, Space_mem::hpt.iter_hpt_lev);
@@ -478,6 +480,8 @@ Pd::~Pd()
     ec_cache.free(quota);
     fpu_cache.free(quota);
     mdb_cache.free(quota);
+    cell_cache.free(quota);
+
 }
 
 extern "C" int __cxa_atexit(void (*)(void *), void *, void *) { return 0; }

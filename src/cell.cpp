@@ -36,13 +36,11 @@ void Cell::reclaim_cores(unsigned int cores)
         else
         {
             core_alloc.return_core(this, static_cast<unsigned int>(cpu));
-            this->yield_core(static_cast<unsigned int>(cpu));
-            core_alloc.yield(static_cast<unsigned int>(cpu));
         }
     }
 }
 
-unsigned Cell::yield_cores(mword cpu_map)
+unsigned Cell::yield_cores(mword cpu_map, bool release)
 {
     long cpu = 0;
     unsigned yielded = 0;
@@ -61,9 +59,9 @@ unsigned Cell::yield_cores(mword cpu_map)
         else
         {
             core_alloc.return_core(this, static_cast<unsigned int>(cpu));
-            this->yield_core(static_cast<unsigned int>(cpu));
-            core_alloc.yield(static_cast<unsigned int>(cpu));
         }
+        if (release)
+            core_alloc.yield(this, static_cast<unsigned int>(cpu));
         yielded++;
     }
     return yielded;
@@ -76,4 +74,23 @@ void Cell::update(mword mask, mword offset)
     core_mask[offset] = mask;
 
     core_alloc.set_owner(this, mask, offset * sizeof(mword) * 8);
+}
+
+void Cell::remove_worker(unsigned cpu)
+{
+    if (!_worker_sms[cpu])
+        return;
+
+    Sm::destroy(_worker_sms[cpu], *_pd);
+}
+
+Cell::~Cell()
+{
+    yield_cores(core_map);
+
+    for (int cpu = 0; cpu < NUM_CPU; cpu++) {
+        if (_workers[cpu])
+            Ec::destroy(_workers[cpu], *_pd);
+    }
+
 }

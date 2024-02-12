@@ -34,7 +34,6 @@
 #include "tss.hpp"
 #include "si.hpp"
 #include "cmdline.hpp"
-
 #include "stdio.hpp"
 
 class Utcb;
@@ -244,6 +243,8 @@ private:
         static Ec *ec_idle CPULOCAL;
         static Ec *pmc_owner CPULOCAL_HOT;
 
+        bool is_worker{false};
+
         Ec (Pd *, void (*)(), unsigned);
         Ec (Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
         Ec (Pd *, Pd *, void (*f)(), unsigned, Ec *);
@@ -426,6 +427,12 @@ private:
                 Rcu::call(s);
             }
         }
+
+        ALWAYS_INLINE
+        inline Cell *cell() { return pd->cell; }
+
+        ALWAYS_INLINE
+        inline unsigned cpu_id() { return cpu; }
 
         HOT NORETURN
         static void ret_user_sysexit();
