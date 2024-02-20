@@ -33,6 +33,7 @@
 #include "pt.hpp"
 #include "core_allocator.hpp"
 #include "cell.hpp"
+#include "sc.hpp"
 
 Ec *Ec::current, *Ec::fpowner, *Ec::ec_idle, *Ec::pmc_owner;
 Sm *Ec::auth_suspend;
@@ -425,11 +426,15 @@ void Ec::idle()
         if (EXPECT_FALSE (hzd))
             handle_hazard (hzd, idle);
 
+        Sc::setup_rrq_mon(Cpu::id);
+
         uint64 t1 = rdtsc();
-        asm volatile ("sti; hlt; cli" : : : "memory");
+        asm volatile ("sti; mwait; cli" :: "a"(0), "c"(0)  : "memory");
         uint64 t2 = rdtsc();
 
         Counter::cycles_idle += t2 - t1;
+        
+        Sc::rrq_handler();
     }
 }
 

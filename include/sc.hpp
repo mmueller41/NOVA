@@ -127,4 +127,10 @@ class alignas(64) Sc : public Kobject, public Refcount
 
         ALWAYS_INLINE
         void inline measured() { time_m = time; }
+
+        ALWAYS_INLINE
+        static void inline setup_rrq_mon(unsigned cpu) {
+            Sc::Rq *r = remote(cpu);
+            asm volatile("monitor" ::"a"(&r->queue), "c"(0), "d"(0) :);
+        }
 };
