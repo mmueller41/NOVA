@@ -26,7 +26,7 @@
 
 class Ec;
 
-class Sc : public Kobject, public Refcount
+class alignas(64) Sc : public Kobject, public Refcount
 {
     friend class Queue<Sc>;
 

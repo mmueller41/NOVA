@@ -10,7 +10,7 @@
 extern Cell *cells[64];
 class Core_allocator;
 
-class Cell : public List<Cell>
+class alignas(64) Cell : public List<Cell>
 {
     friend class Ec;
     friend class Core_allocator;
@@ -21,24 +21,23 @@ private:
     Sc *_worker_scs[NUM_CPU];
     Sm *_worker_sms[NUM_CPU];
     unsigned int _active_workers{1};
-    mword core_map{0};
+    alignas(64) mword core_map{0};
 
 public:
     volatile mword cores_to_reclaim{0};
     unsigned int _prio;
-    Sm &_yield_sm;
     mword borrowed_cores{0};
     mword core_mask[NUM_CPU/(sizeof(mword) *8)];
 
-    Cell(Pd *pd, unsigned short prio, Sm &sm) : List<Cell>(cells[prio]), _pd(pd),  _prio{prio}, _yield_sm(sm) { _pd->cell = this; }
+    Cell(Pd *pd, unsigned short prio) : List<Cell>(cells[prio]), _pd(pd),  _prio{prio}  { _pd->cell = this; }
 
-    Cell(Pd *pd, unsigned short prio, Sm &sm, mword mask, mword start) : List<Cell>(cells[prio]), _pd(pd), _prio(prio), _yield_sm(sm) { _pd->cell = this;
+    Cell(Pd *pd, unsigned short prio, mword mask, mword start) : List<Cell>(cells[prio]), _pd(pd), _prio(prio) { _pd->cell = this;
         core_mask[start] = mask;
 
         trace(0, "Created new cell %p wtih initial allocation: %lx", this, core_mask[0]);
     }
 
-    Cell(const Cell& copy) : List<Cell>(cells[copy._prio]), _pd(copy._pd), _prio(copy._prio), _yield_sm(copy._yield_sm) {
+    Cell(const Cell& copy) : List<Cell>(cells[copy._prio]), _pd(copy._pd), _prio(copy._prio) {
 
     }
 

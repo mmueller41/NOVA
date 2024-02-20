@@ -29,7 +29,7 @@
 
 class Pmc;
 class Cell;
-class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, public Space_obj
+class alignas(64) Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, public Space_obj
 {
     private:
         static Slab_cache cache;

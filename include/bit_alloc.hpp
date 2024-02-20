@@ -26,7 +26,7 @@ class Bit_alloc
 {
     private:
 
-        mword bits [C / 8 / sizeof(mword)];
+        alignas(64) mword bits [C / 8 / sizeof(mword)];
         mword last { 0 };
 
         enum {

@@ -41,11 +41,11 @@ mword Core_allocator::alloc(Cell *claimant, unsigned int cores)
 
         if (borrowed) {
             claimant->borrowed_cores |= (1UL << cpu_id);
-            __atomic_store_n(&borrowers[cpu_id], claimant, __ATOMIC_SEQ_CST);
+            __atomic_store_n(&borrowers[cpu_id].cell, claimant, __ATOMIC_SEQ_CST);
         }
         else
         {
-            owners[cpu_id] = claimant;
+            owners[cpu_id].cell = claimant;
         }
 
         //trace(0, "Allocated core %u for %p", cpu_id, claimant);
@@ -62,12 +62,12 @@ bool Core_allocator::reserve(Cell *reservant, mword const id)
         return false;
 
     /* It is possible that reservant is a newly created cell or just woke up and its core at <id> has been borrowed by another cell. If that's the case, we reclaim the core <id> for <reservant> by commanding the borrower to yield the core. */
-    Cell *borrower = const_cast<Cell *>(__atomic_load_n(&borrowers[id], __ATOMIC_SEQ_CST));
+    Cell *borrower = const_cast<Cell *>(__atomic_load_n(&borrowers[id].cell, __ATOMIC_SEQ_CST));
     
-    if (owners[id] == reservant && borrower) {
+    if (owners[id].cell == reservant && borrower) {
         //trace(0, "%p: Need to reclaim CPU %ld from %p", reservant, id, borrower);
         borrower->yield_cores((1UL << id));
-    } else if (owners[id] != reservant) {
+    } else if (owners[id].cell != reservant) {
         return false;
     }
     //trace(0, "Reserving CPU %ld for cell %p", id, reservant);
@@ -79,22 +79,22 @@ bool Core_allocator::reserve(Cell *reservant, mword const id)
 
 void Core_allocator::set_owner(Cell *owner, mword const id)
 {
-    if (owners[id] != nullptr && owners[id] != owner) {
-        Cell *other = owners[id];
-        borrowers[id] = other;
+    if (owners[id].cell != nullptr && owners[id].cell != owner) {
+        Cell *other = const_cast<Cell*>(owners[id].cell);
+        borrowers[id].cell = other;
         other->borrowed_cores |= (1UL << id);
     }
-    owners[id] = owner;
+    owners[id].cell = owner;
 }
 
 void Core_allocator::return_core(Cell *borrower, unsigned cpu)
 {
     borrower->yield_core(cpu);
-    if (borrowers[cpu] == borrower)
-        __atomic_store_n(&borrowers[cpu], 0, __ATOMIC_SEQ_CST);
-    Atomic::test_set_bit<mword>(owners[cpu]->core_map, cpu);
+    if (borrowers[cpu].cell == borrower)
+        __atomic_store_n(&borrowers[cpu].cell, 0, __ATOMIC_SEQ_CST);
+    Atomic::test_set_bit<mword>(const_cast<Cell*>(owners[cpu].cell)->core_map, cpu);
     //trace(0, "Returned core %d to cell %p, cmap=%lx", cpu, owners[cpu], owners[cpu]->core_map);
-    owners[cpu]->wake_core(cpu);
+    const_cast<Cell*>(owners[cpu].cell)->wake_core(cpu);
 }
 
 void Core_allocator::dump_cells()
@@ -153,7 +153,7 @@ unsigned Core_allocator::reclaim_cores(Cell *claimant, unsigned int)
         while ((cpu = bit_scan_forward((yield_mask))) != -1) {
             yield_mask &= ~(1UL << cpu);
             //trace(0, "Will try to reclaim core %lu for %p from %p", cpu, claimant, borrowers[cpu]);
-            Cell *borrower = const_cast<Cell*>(__atomic_load_n(&borrowers[cpu], __ATOMIC_SEQ_CST));
+            Cell *borrower = const_cast<Cell*>(__atomic_load_n(&borrowers[cpu].cell, __ATOMIC_SEQ_CST));
             if (borrower && borrower != claimant)
             {
                 if (cpu == Cpu::id)

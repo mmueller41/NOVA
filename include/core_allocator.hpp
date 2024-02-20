@@ -15,13 +15,17 @@ class Cell;
 class Core_allocator
 {
     private:
+        struct alignas(64) aligned_cell_container {
+            alignas(64) Cell volatile *cell;
+        };
+
         /* Bit allocator and free map for CPU cores */
-        Bit_alloc<NUM_CPU, 0> free_map{};
+        alignas(64) Bit_alloc<NUM_CPU, 0> free_map{};
         /* Bitmap saving which cores are idle */
-        mword idle_mask[NUM_CPU / (sizeof(mword) * 8)];
-        Cell *owners[NUM_CPU]; /* saves which cell owns a certain core */
+        alignas(64) mword idle_mask[NUM_CPU / (sizeof(mword) * 8)];
+        alignas(64) struct aligned_cell_container owners[NUM_CPU]{}; /* saves which cell owns a certain core */
         /* borrowers saves which cell has borrowed which CPU core */
-        volatile Cell *borrowers[NUM_CPU];
+        alignas(64) struct aligned_cell_container borrowers[NUM_CPU];
         Spinlock dump_lock{};
 
         unsigned reclaim_cores(Cell *claimant, unsigned int);
@@ -39,7 +43,7 @@ class Core_allocator
 
         ALWAYS_INLINE
         inline bool is_owner(Cell *claimant, mword const id) {
-            return (claimant == owners[id]);
+            return (claimant == owners[id].cell);
         }
 
         void set_owner(Cell *, mword const);
@@ -63,7 +67,7 @@ class Core_allocator
         void return_core(Cell *, unsigned);
 
         bool borrowed(Cell *cell, unsigned cpu) {
-            return borrowers[cpu] == cell;
+            return borrowers[cpu].cell == cell;
         }
 
         void dump_cells();

@@ -25,7 +25,7 @@
 #include "ec.hpp"
 #include "si.hpp"
 #include "core_allocator.hpp"
-class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, public Si
+class alignas(64) Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, public Si
 {
     private:
         mword counter;

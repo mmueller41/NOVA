@@ -42,7 +42,7 @@ class Pt;
 class Sys_ec_ctrl;
 class Pmc;
 class Cell;
-class Ec : public Kobject, public Refcount, public Queue<Sc>
+class alignas(64) Ec : public Kobject, public Refcount, public Queue<Sc>
 {
     friend class Queue<Ec>;
     friend class Sc;
