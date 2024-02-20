@@ -416,6 +416,8 @@ class Sys_alloc_core : public Sys_regs
     public:
         ALWAYS_INLINE
         inline unsigned int count() const { return static_cast<unsigned int>(ARG_2); }
+        ALWAYS_INLINE
+        inline void set_allocated(mword cores) { ARG_3 = cores; }
 };
 
 class Sys_create_cell : public Sys_regs
@@ -470,6 +472,7 @@ class Sys_yield : public Sys_regs
         {
             RETURN_CORE = 0,
             SLEEP = 1,
+            NO_BLOCK = 3,
         };
 
         ALWAYS_INLINE
