@@ -24,7 +24,7 @@
 
 #include "ec.hpp"
 #include "si.hpp"
-
+#include "core_allocator.hpp"
 class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, public Si
 {
     private:
@@ -90,6 +90,10 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
             if (!block)
                 Sc::schedule (false);
 
+            if (ec->cell()) {
+                core_alloc.yield(ec->cell(), ec->cpu_id());
+            }
+
             ec->set_timeout (t, this);
 
             ec->block_sc();
@@ -123,6 +127,10 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
 
                 if (si) ec->set_si_regs(si->value, si->reset(true));
 
+                if (ec->cell()) {
+                    core_alloc.reserve(ec->cell(), ec->cpu_id());
+                }
+
                 ec->release (c);
 
             } while (EXPECT_FALSE(ec->del_rcu()));
@@ -135,6 +143,10 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
 
                 if (!Queue<Ec>::dequeue (ec))
                     return;
+            }
+
+            if (ec->cell()) {
+                core_alloc.reserve(ec->cell(), ec->cpu_id());
             }
 
             ec->release (Ec::sys_finish<Sys_regs::COM_TIM>);
