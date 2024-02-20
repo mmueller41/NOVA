@@ -8,7 +8,6 @@ mword Core_allocator::alloc(Cell *claimant, unsigned int cores)
     mword core_allocation = 0x0UL;
     mword *mask = claimant->core_mask;
 
-
     for (; cores > 0; cores--)
     {
         unsigned int cpu_id = 0x0;
@@ -49,12 +48,12 @@ mword Core_allocator::alloc(Cell *claimant, unsigned int cores)
             owners[cpu_id] = claimant;
         }
 
-        trace(0, "Allocated core %u for %p", cpu_id, claimant);
+        //trace(0, "Allocated core %u for %p", cpu_id, claimant);
+        //free_map.dump_trace();
         /* Mark the core as busy now, by clearing the corresponding bit in the idle cores bitmap */
         Atomic::test_clr_bit<mword>(idle_mask[cpu_id / NUM_CPU], cpu_id % NUM_CPU);
     }
     return core_allocation;
-
 }
 
 bool Core_allocator::reserve(Cell *reservant, mword const id)
@@ -66,14 +65,14 @@ bool Core_allocator::reserve(Cell *reservant, mword const id)
     Cell *borrower = const_cast<Cell *>(__atomic_load_n(&borrowers[id], __ATOMIC_SEQ_CST));
     
     if (owners[id] == reservant && borrower) {
-        trace(0, "%p: Need to reclaim CPU %ld from %p", reservant, id, borrower);
+        //trace(0, "%p: Need to reclaim CPU %ld from %p", reservant, id, borrower);
         borrower->yield_cores((1UL << id));
     } else if (owners[id] != reservant) {
         return false;
     }
     //trace(0, "Reserving CPU %ld for cell %p", id, reservant);
-    if (!free_map.reserve(id))
-        Atomic::set_mask(reservant->core_map, (1ul << id));
+    free_map.reserve(id);
+    Atomic::set_mask(reservant->core_map, (1ul << id));
 
     return true;
 }
@@ -94,6 +93,7 @@ void Core_allocator::return_core(Cell *borrower, unsigned cpu)
     if (borrowers[cpu] == borrower)
         __atomic_store_n(&borrowers[cpu], 0, __ATOMIC_SEQ_CST);
     Atomic::test_set_bit<mword>(owners[cpu]->core_map, cpu);
+    //trace(0, "Returned core %d to cell %p, cmap=%lx", cpu, owners[cpu], owners[cpu]->core_map);
     owners[cpu]->wake_core(cpu);
 }
 
@@ -134,10 +134,12 @@ void Core_allocator::yield(Cell *yielder, unsigned cpu_id)
         return;
     if (yielder->yielded(cpu_id))
         return;
+    if ((yielder->core_map & (1ul<<cpu_id)) || (is_owner(yielder, cpu_id))) {
+        Atomic::test_set_bit<mword>(idle_mask[cpu_id / NUM_CPU], cpu_id % NUM_CPU);
+        free_map.release(cpu_id);
+        //trace(0, "Cell %p yielded CPU %u, owner of CPU is %p", yielder, cpu_id, owners[cpu_id]);
+    }
     yielder->yield_core(cpu_id);
-    Atomic::test_set_bit<mword>(idle_mask[cpu_id / NUM_CPU], cpu_id % NUM_CPU);
-    free_map.release(cpu_id);
-    //trace(0, "Cell %p yielded CPU %u", yielder, cpu_id);
 }
 
 unsigned Core_allocator::reclaim_cores(Cell *claimant, unsigned int)
@@ -156,7 +158,7 @@ unsigned Core_allocator::reclaim_cores(Cell *claimant, unsigned int)
             {
                 if (cpu == Cpu::id)
                     continue;
-                trace(0, "Reclaiming core %lu for %p from %p", cpu, claimant, borrower);
+                //trace(0, "Reclaiming core %lu for %p from %p", cpu, claimant, borrower);
                 reclaimed += borrower->yield_cores(1UL << cpu);
             }
         }
