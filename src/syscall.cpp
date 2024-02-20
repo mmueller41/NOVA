@@ -1468,8 +1468,7 @@ void Ec::sys_create_cell()
     }
     Pd *pd = static_cast<Pd *>(cap.obj());
     if (!pd->cell) {
-        Sm *sm = new (*pd) Sm(pd, 0);
-        pd->cell = new (*pd) Cell(pd, r->prio(), *sm, r->mask(), r->start());
+        pd->cell = new (*pd) Cell(pd, r->prio(), r->mask(), r->start());
     } else {
         pd->cell->update(r->mask(), r->start());
     }
