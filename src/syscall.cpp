@@ -499,6 +499,7 @@ void Ec::sys_create_ec()
 
     if (pd->worker_channels && !pd->cell->_workers[r->cpu()]) {
         pd->cell->_workers[r->cpu()] = ec;
+        ec->is_worker = true;
         Sm *sm = new (*pd) Sm(Pd::current, 0, 0);
         if (!sm) {
             trace(TRACE_ERROR, "%s: Unable to create worker for %p at CPU %u", __func__, pd->cell, r->cpu());
@@ -1354,13 +1355,16 @@ void Ec::sys_yield()
     
     Sys_yield *r = static_cast<Sys_yield *>(current->sys_regs());
     Cell *cell = current->pd->cell;
-
+    
     if (!cell) {
+        trace(TRACE_ERROR, "No cell found on CPU %d", Cpu::id);
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
-    /* Always remove the yielded core from the cell's core map first */
-    cell->yield_core(Cpu::id);
+    if (!current->is_worker) {
+        trace(TRACE_ERROR, "Tried to yield non-worker on CPU %d", Cpu::id);
+        sys_finish<Sys_regs::BAD_CAP>();
+    }
 
     switch (r->op()) {
         /* If the worker thread shall sleep we release the core */
@@ -1370,21 +1374,28 @@ void Ec::sys_yield()
             owner's corresponding worker. There is no need to release the core, as it would be allocated immediately by its owner anyway. */
             if (core_alloc.borrowed(cell, Cpu::id)) {
                 core_alloc.return_core(cell, Cpu::id);
-                trace(0, "Cell %p returned CPU %u, cmap=%lu", cell, Cpu::id, cell->core_map);
+                //trace(0, "Cell %p returned CPU %u, cmap=%lu", cell, Cpu::id, cell->core_map);
             }
             break;
         }
         case Sys_yield::SLEEP: {
-            if (core_alloc.is_owner(cell, Cpu::id))
-                core_alloc.yield(Cpu::id);
-            trace(0, "Cell %p yielded CPU %d", cell, Cpu::id);
+            core_alloc.yield(cell, Cpu::id);
+            //trace(0, "Cell %p yielded CPU %d, flags=%d", cell, Cpu::id, r->op());
             break;
         }
 
+        case Sys_yield::NO_BLOCK: {
+            core_alloc.yield(cell, Cpu::id);
+            //trace(0, "Cell %p yielded CPU %d without blocking worker", cell, Cpu::id);
+            break;
+        }
     }
 
     /* Put the yielding worker to sleep */
-    cell->_worker_sms[Cpu::id]->dn(false, 0);
+    if (r->op() != Sys_yield::NO_BLOCK) {
+        current->cont = Ec::sys_finish<Sys_regs::SUCCESS, true>;
+        cell->_worker_sms[Cpu::id]->dn(false, 0, current, true);
+    }
     sys_finish<Sys_regs::SUCCESS>();
 }
 
@@ -1421,11 +1432,12 @@ void Ec::sys_alloc_cores()
 
     mword cores = core_alloc.alloc(cell, r->count());
     if (!cores) {
+        //trace(TRACE_ERROR, "No more cores available for %p: cmap = %lx", cell, cell->core_map);
         sys_finish<Sys_regs::BAD_CPU>();
     }
 
     cell->add_cores(cores);
-
+    r->set_allocated(cores);
 
     sys_finish<Sys_regs::SUCCESS>();
 }
@@ -1495,13 +1507,14 @@ void Ec::sys_console_ctrl()
 
     Sys_console_ctrl *r = static_cast<Sys_console_ctrl *>(current->sys_regs());
 
+
     switch (r->flags()) {
         case Sys_console_ctrl::LOCK: {
-            Console::lock_console();
+            //Console::lock_console();
             break;
         }
         case Sys_console_ctrl::UNLOCK: {
-            Console::unlock_console();
+            //Console::unlock_console();
             break;
         }
     }
