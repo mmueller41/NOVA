@@ -49,8 +49,10 @@ public:
         Atomic::test_clr_bit<mword>(core_map, core);
         Atomic::test_clr_bit<volatile mword>(cores_to_reclaim, core);
         borrowed_cores &= ~(1UL << core);
-        if (_pd->worker_channels)
+        if (_pd->worker_channels) {
             __atomic_store_n(&_pd->worker_channels[core], 0, __ATOMIC_SEQ_CST);
+            //trace(0, "%p: channel %d : %ld", this, core, _pd->worker_channels[core]);
+        }
     }
 
     ALWAYS_INLINE
@@ -69,7 +71,7 @@ public:
     unsigned yield_cores(mword cpu_map, bool release=false);
 
     bool yielded(unsigned cpu) {
-        return (core_map & (1ul << cpu)) && _workers[cpu]->blocked();
+        return (core_map & (1ul << cpu)) && _workers[cpu] && _workers[cpu]->blocked();
     }
 
     void remove_worker(unsigned cpu);
