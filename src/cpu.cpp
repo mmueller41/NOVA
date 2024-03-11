@@ -64,6 +64,7 @@ uint8       Cpu::stepping[NUM_CPU];
 unsigned    Cpu::brand;
 unsigned    Cpu::patch[NUM_CPU];
 unsigned    Cpu::row;
+struct Cpu::idle_flag Cpu::idle[NUM_CPU];
 
 uint32      Cpu::name[12];
 uint32      Cpu::features[6];
@@ -190,7 +191,7 @@ void Cpu::check_features()
     if (edx & (1 << 16)) {
         uint32 cr_pat = Msr::read<uint32>(Msr::IA32_CR_PAT) & 0xffff00ff;
 
-        cr_pat |= 1 << 8;
+        cr_pat |= 6 << 8;
         Msr::write<uint32>(Msr::IA32_CR_PAT, cr_pat);
     } else
         trace (0, "warning: no PAT support");
