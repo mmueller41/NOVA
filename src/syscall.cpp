@@ -1352,7 +1352,6 @@ void Ec::ret_xcpu_reply()
 
 void Ec::sys_yield()
 {
-    
     Sys_yield *r = static_cast<Sys_yield *>(current->sys_regs());
     Cell *cell = current->pd->cell;
     
@@ -1423,7 +1422,6 @@ void Ec::sys_alloc_cores()
 {
     check<sys_alloc_cores>(1);
 
-
     Sys_alloc_core *r = static_cast<Sys_alloc_core*>(current->sys_regs());
     Cell *cell = current->pd->cell;
 
@@ -1442,13 +1440,34 @@ void Ec::sys_alloc_cores()
     sys_finish<Sys_regs::SUCCESS>();
 }
 
+void Ec::sys_reserve_core()
+{
+    check<sys_reserve_core>(1);
+
+    Sys_reserve_core *r = static_cast<Sys_reserve_core *>(current->sys_regs());
+    Cell *cell = current->pd->cell;
+
+    if (!cell)
+        sys_finish<Sys_regs::BAD_CAP>();
+
+    if (!core_alloc.is_owner(cell, r->core()))
+        sys_finish<Sys_regs::BAD_CPU>();
+
+    cell->wake_core(r->core());
+
+    sys_finish<Sys_regs::SUCCESS>();
+}
+
 void Ec::sys_core_allocation()
 {
     check<sys_core_allocation>(1);
 
     Sys_core_alloc *r = static_cast<Sys_core_alloc*>(current->sys_regs());
     Cell *my_cell = current->pd->cell;
-    r->set_val(__atomic_load_n(&my_cell->core_map, __ATOMIC_SEQ_CST));
+    if (r->flags())
+        r->set_val(my_cell->core_mask[0]);
+    else
+        r->set_val(__atomic_load_n(&my_cell->core_map, __ATOMIC_SEQ_CST));
 
     sys_finish<Sys_regs::SUCCESS>();
 }
@@ -1520,6 +1539,16 @@ void Ec::sys_console_ctrl()
     sys_finish<Sys_regs::SUCCESS>();
 }
 
+void Ec::sys_create_habitat()
+{
+    check<sys_create_habitat>(1);
+
+    Sys_create_habitat *r = static_cast<Sys_create_habitat*>(current->sys_regs());
+    core_alloc.init_habitat(r->offset(), r->size());
+
+    sys_finish<Sys_regs::SUCCESS>();
+}
+
 void Ec::sys_cpuid()
 {
     check<sys_cpuid>(1);
@@ -1557,6 +1586,8 @@ void (*const syscall[])() =
     &Ec::sys_cell_ctrl,
     &Ec::sys_console_ctrl,
     &Ec::sys_cpuid,
+    &Ec::sys_reserve_core,
+    &Ec::sys_create_habitat,
 };
 
 template void Ec::sys_finish<Sys_regs::COM_ABT>();

@@ -386,8 +386,8 @@ private:
 
             Counter::print<1,16> (++Counter::helping, Console_vga::COLOR_LIGHT_WHITE, SPN_HLP);
 
-            if (EXPECT_TRUE ((++Sc::ctr_loop % 100) == 0))
-                Console::print("Long helping chain");
+            /*if (EXPECT_TRUE ((++Sc::ctr_loop % 100) == 0))
+                Console::print("Long helping chain");*/
 
             activate();
         }
@@ -433,6 +433,15 @@ private:
 
         ALWAYS_INLINE
         inline unsigned cpu_id() { return cpu; }
+
+        ALWAYS_INLINE
+        static inline bool idling(unsigned long c)
+        {
+            Ec **curr = reinterpret_cast<Ec **>(reinterpret_cast<mword>(&Ec::current) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+            Ec **idle = reinterpret_cast<Ec **>(reinterpret_cast<mword>(&Ec::ec_idle) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+
+            return (*curr == *idle);
+        }
 
         HOT NORETURN
         static void ret_user_sysexit();
@@ -551,6 +560,12 @@ private:
 
         NORETURN
         static void sys_cpuid();
+
+        NORETURN
+        static void sys_reserve_core();
+
+        NORETURN
+        static void sys_create_habitat();
 
         template <void (*)()>
         NORETURN

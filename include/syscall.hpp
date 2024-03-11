@@ -478,3 +478,29 @@ class Sys_yield : public Sys_regs
         ALWAYS_INLINE
         inline unsigned op() const { return flags(); }
 };
+
+class Sys_reserve_core : public Sys_regs
+{
+    public:
+        ALWAYS_INLINE
+        inline unsigned core() const { return static_cast<unsigned>(ARG_2); }
+};
+
+class Sys_create_habitat : public Sys_regs
+{
+    public:
+        ALWAYS_INLINE
+        inline unsigned long sel() const { return ARG_1 >> 12; }
+
+        ALWAYS_INLINE
+        inline unsigned long offset() const { return ARG_2; }
+
+        ALWAYS_INLINE
+        inline unsigned long size() const { return ARG_3; }
+
+        enum
+        {
+            SHRINK = 0,
+            GROW = 1,
+        };
+};
