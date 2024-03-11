@@ -421,7 +421,6 @@ void Ec::ret_user_vmrun()
 void Ec::idle()
 {
     for (;;) {
-
         mword hzd = Cpu::hazard & (HZD_RCU | HZD_SCHED | HZD_TSC_AUX);
         if (EXPECT_FALSE (hzd))
             handle_hazard (hzd, idle);
@@ -429,11 +428,14 @@ void Ec::idle()
         Sc::setup_rrq_mon(Cpu::id);
 
         uint64 t1 = rdtsc();
-        asm volatile ("sti; mwait; cli" :: "a"(0), "c"(0)  : "memory");
+        asm volatile("sti; mwait; cli" ::"a"(0), "c"(0) : "memory");
         uint64 t2 = rdtsc();
 
+        if (!(Sc::remote(Cpu::id)->queue))
+            continue;
+
         Counter::cycles_idle += t2 - t1;
-        
+
         Sc::rrq_handler();
     }
 }

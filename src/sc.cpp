@@ -50,7 +50,7 @@ Sc::Sc (Pd *own, mword sel, Ec *e, unsigned c, unsigned p, unsigned q) : Kobject
     trace (TRACE_SYSCALL, "SC:%p created (EC:%p CPU:%#x P:%#x Q:%#x)", this, e, c, p, q);
 }
 
-Sc::Sc (Pd *own, Ec *e, unsigned c, Sc *x) : Kobject (SC, static_cast<Space_obj *>(own), 0, 0x1, free_x), ec (e), cpu (c), prio (x->prio), budget (x->budget), left (x->left)
+Sc::Sc (Pd *own, Ec *e, unsigned c, Sc *x) : Kobject (SC, static_cast<Space_obj *>(own), 0, 0x1, free_x), ec (e), cpu (c), prio (x->prio+10), budget (x->budget), left (x->left)
 {
     trace (TRACE_SYSCALL, "SC:%p created (EC:%p CPU:%#x P:%#x Q:%#llx) - xCPU", this, e, c, prio, budget / (Lapic::freq_bus / 1000));
 }
@@ -83,7 +83,7 @@ void Sc::ready_enqueue (uint64 , bool inc_ref, bool use_left)
             list[prio] = this;
     }
 
-    trace (TRACE_SCHEDULE, "ENQ:%p (%llu) PRIO:%#x TOP:%#x %s", this, left, prio, prio_top, prio > current->prio ? "reschedule" : "");
+    //trace (TRACE_SCHEDULE, "ENQ:%p (%llu) PRIO:%#x TOP:%#x %s", this, left, prio, prio_top, prio > current->prio ? "reschedule" : "");
 
     if (prio > current->prio || (this != current && prio == current->prio && (use_left && left)))
         Cpu::hazard |= HZD_SCHED;
@@ -110,7 +110,7 @@ void Sc::ready_dequeue (uint64 t)
     while (!list[prio_top] && prio_top)
         prio_top--;
 
-    trace (TRACE_SCHEDULE, "DEQ:%p (%llu) PRIO:%#x TOP:%#x", this, left, prio, prio_top);
+    //trace (TRACE_SCHEDULE, "DEQ:%p (%llu) PRIO:%#x TOP:%#x", this, left, prio, prio_top);
 
     ec->add_tsc_offset (tsc - t);
 
@@ -124,6 +124,8 @@ void Sc::schedule (bool suspend, bool use_left)
 
         assert (current);
         assert (suspend || !current->prev);
+
+        rrq_handler();
 
         uint64 t = rdtsc();
         uint64 d = Timeout_budget::budget.dequeue();
@@ -180,13 +182,14 @@ void Sc::remote_enqueue(bool inc_ref)
             next->prev = prev->next = this;
         } else {
             r->queue = prev = next = this;
+            Lapic::send_ipi (cpu, VEC_IPI_RRQ);
         }
     }
 }
 
 void Sc::rrq_handler()
 {
-    //uint64 t = rdtsc();
+    uint64 t = rdtsc();
 
     Lock_guard <Spinlock> guard (rq.lock);
 
@@ -199,7 +202,7 @@ void Sc::rrq_handler()
 
         ptr = ptr->next == ptr ? nullptr : ptr->next;
 
-        sc->ready_enqueue (0, false);
+        sc->ready_enqueue (t, false);
     }
 
     rq.queue = nullptr;
