@@ -16,7 +16,8 @@ class Core_allocator
 {
     private:
         struct alignas(64) aligned_cell_container {
-            alignas(64) Cell volatile *cell;
+            alignas(64) Cell volatile *cell{nullptr};
+            alignas(64) Spinlock lock{};
         };
 
         /* Bit allocator and free map for CPU cores */
@@ -73,6 +74,14 @@ class Core_allocator
         void dump_cells();
 
         bool valid_allocation();
+
+        void init_habitat(mword offset, mword size)
+        {
+            trace(0, "Created habitat of size %lu starting with CPU %lu", size, offset);
+            free_map.reserve(0, offset);
+            free_map.reserve(offset+size, NUM_CPU-size);
+            free_map.dump_trace();
+        }
 };
 
 extern Core_allocator core_alloc;
