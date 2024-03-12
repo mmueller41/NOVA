@@ -12,7 +12,7 @@ void Cell::add_cores(mword cpu_map) {
     {
         Atomic::test_clr_bit(cpu_map, cpu);
         if (cpu >= NUM_CPU || !(_worker_scs[cpu])) {
-            trace(TRACE_ERROR, "No worker found for CPU: %ld", cpu);
+            //trace(TRACE_ERROR, "No worker found for CPU: %ld", cpu);
             continue;
         }
         _worker_sms[cpu]->up();
