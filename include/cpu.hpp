@@ -141,7 +141,11 @@ class Cpu
             EFL_ID      = 1ul << 21             // 0x200000
         };
 
-        static mword    boot_lock           asm ("boot_lock");
+        struct alignas(64) idle_flag {
+            alignas(64) bool volatile idle;
+        };
+
+        static mword boot_lock asm("boot_lock");
 
         static unsigned online;
         static uint8    acpi_id[NUM_CPU];
@@ -157,6 +161,8 @@ class Cpu
         static uint8    model[NUM_CPU];
         static uint8    stepping[NUM_CPU];
         static unsigned patch[NUM_CPU];
+
+        static struct idle_flag idle[NUM_CPU];
 
         static unsigned id                  CPULOCAL_HOT;
         static unsigned hazard              CPULOCAL_HOT;
