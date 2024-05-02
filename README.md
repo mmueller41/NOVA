@@ -88,7 +88,8 @@ Command-Line Parameters
 The following command-line parameters are supported for the microhypervisor.
 They must be separated by spaces.
 
-- *iommu*	- Enables DMA and interrupt remapping.
+- *iommu_intel*	- Enables DMA and interrupt remapping for Intel.
+- *iommu_amd*	- Enables DMA and interrupt remapping for AMD.
 - *keyb*	- Enables the microhypervisor to drive the keyboard.
 - *serial*	- Enables the microhypervisor to drive the serial console.
 - *spinner*	- Enables event spinners.
@@ -109,6 +110,7 @@ Copyright (C) 2009-2011 Udo Steinberg <udo@hypervisor.org>
 Economic rights: Technische Universitaet Dresden (Germany)
 
 Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
+Copyright (C) 2012-2024 Alexander Boettcher, Genode Labs GmbH.
 
 NOVA is free software: you can redistribute it and/or modify it
 under the terms of the GNU General Public License version 2 as
@@ -124,4 +126,4 @@ GNU General Public License version 2 for more details.
 Contact
 -------
 
-Feedback and comments should be sent to udo@hypervisor.org
+Feedback and comments should be sent to alexander.boettcher@genode-labs.com

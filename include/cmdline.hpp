@@ -38,7 +38,9 @@ class Cmdline
         static char const *get_arg (char const **, unsigned &);
 
     public:
-        static bool iommu;
+
+        static bool iommu_intel;
+        static bool iommu_amd;
         static bool keyb;
         static bool serial;
         static bool spinner;
