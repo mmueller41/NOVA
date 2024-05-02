@@ -45,7 +45,7 @@ class Cmdline
         static bool vtlb;
         static bool nodl;
         static bool nopcid;
-        static bool novga;
+        static bool vga;
         static bool novpid;
         static bool logmem;
         static bool fpu_lazy;

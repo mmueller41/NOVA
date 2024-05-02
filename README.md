@@ -95,7 +95,7 @@ They must be separated by spaces.
 - *logmem*	- Enables the microhypervisor to export kernel messages.
 - *vtlb*	- Forces use of vTLB instead of nested paging (EPT/NPT).
 - *nopcid*	- Disables TLB tags for address spaces.
-- *novga*  	- Disables VGA console.
+- *vga*  	- Enables VGA console.
 - *novpid* 	- Disables TLB tags for virtual machines.
 
 

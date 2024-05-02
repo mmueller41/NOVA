@@ -31,7 +31,7 @@ bool Cmdline::spinner;
 bool Cmdline::vtlb;
 bool Cmdline::nodl;
 bool Cmdline::nopcid;
-bool Cmdline::novga;
+bool Cmdline::vga;
 bool Cmdline::novpid;
 bool Cmdline::logmem;
 bool Cmdline::fpu_lazy;
@@ -45,7 +45,7 @@ struct Cmdline::param_map Cmdline::map[] INITDATA =
     { "vtlb",       &Cmdline::vtlb      },
     { "nodl",       &Cmdline::nodl      },
     { "nopcid",     &Cmdline::nopcid    },
-    { "novga",      &Cmdline::novga     },
+    { "vga",        &Cmdline::vga       },
     { "novpid",     &Cmdline::novpid    },
     { "logmem",     &Cmdline::logmem    },
     { "fpu_lazy",   &Cmdline::fpu_lazy  },
