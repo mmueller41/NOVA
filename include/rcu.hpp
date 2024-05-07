@@ -130,5 +130,5 @@ class Rcu
         }
 
         static void quiet();
-        static void update();
+        static void update(bool = true);
 };

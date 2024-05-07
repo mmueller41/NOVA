@@ -75,7 +75,7 @@ void Rcu::quiet()
         start_batch (RCU_CMP);
 }
 
-void Rcu::update()
+void Rcu::update(bool const check)
 {
     if (l_batch != batch()) {
         l_batch = batch();
@@ -94,7 +94,7 @@ void Rcu::update()
         start_batch (RCU_PND);
     }
 
-    if (!curr.empty() && !next.empty() && (next.count > 2000 || curr.count > 2000))
+    if (check && !curr.empty() && !next.empty() && (next.count > 2000 || curr.count > 2000))
         for (unsigned cpu = 0; cpu < NUM_CPU; cpu++) {
 
             if (!Hip::cpu_online (cpu) || Cpu::id == cpu)
