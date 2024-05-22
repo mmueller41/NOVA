@@ -55,6 +55,9 @@ void bootstrap()
 
         Timeout::sync();
 
+        if (Cpu::bsp)
+            Lapic::ap_code_cleanup();
+
         Sc::schedule();
     }
 
@@ -77,6 +80,8 @@ void bootstrap()
         Ec *root_ec = new (Pd::root) Ec (&Pd::root, EC_ROOTTASK, &Pd::root, Ec::root_invoke, Cpu::id, 0, USER_ADDR - 2 * PAGE_SIZE, 0, nullptr);
         Sc *root_sc = new (Pd::root) Sc (&Pd::root, SC_ROOTTASK, root_ec, Cpu::id, Sc::default_prio, Sc::default_quantum);
         root_sc->remote_enqueue();
+
+        Lapic::ap_code_cleanup();
     }
 
     Sc::schedule();

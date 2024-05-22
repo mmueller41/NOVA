@@ -158,6 +158,10 @@ class Lapic
         static void init(bool);
         static void init_cpuid();
 
+        static void ap_code_manage(bool);
+        static void ap_code_prepare() { ap_code_manage(true);  }
+        static void ap_code_cleanup() { ap_code_manage(false); }
+
         static void send_ipi (unsigned, unsigned, Delivery_mode = DLV_FIXED, Shorthand = DSH_NONE);
 
         REGPARM (1)

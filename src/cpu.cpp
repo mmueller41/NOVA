@@ -245,8 +245,12 @@ void Cpu::init(bool resume)
     Tss::load();
     Idt::load();
 
-    if (!resume)
+    if (!resume) {
         Lapic::init_cpuid();
+
+        if (Cpu::bsp)
+            Lapic::ap_code_prepare();
+    }
 
     /* handle case running on machine with too many CPUs */
     if (id >= NUM_CPU) {

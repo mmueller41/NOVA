@@ -40,7 +40,8 @@ void Lapic::init_cpuid()
     Pd::kern.Space_mem::delreg (Pd::kern.quota, Pd::kern.mdb_cache, apic_base & ~PAGE_MASK);
     Hptp (Hpt::current()).update (Pd::kern.quota, CPU_LOCAL_APIC, 0, Hpt::HPT_NX | Hpt::HPT_G | Hpt::HPT_UC | Hpt::HPT_W | Hpt::HPT_P, apic_base & ~PAGE_MASK);
 
-    Cpu::id = Cpu::find_by_apic_id (Lapic::id());
+    Cpu::id  = Cpu::find_by_apic_id (Lapic::id());
+    Cpu::bsp = apic_base & 0x100;
 }
 
 void Lapic::init(bool const invariant_tsc)
@@ -77,7 +78,7 @@ void Lapic::init(bool const invariant_tsc)
     write (LAPIC_TPR, 0x10);
     write (LAPIC_TMR_DCR, 0xb);
 
-    if ((Cpu::bsp = apic_base & 0x100)) {
+    if (Cpu::bsp) {
         bool measured = !read_tsc_freq();
 
         send_ipi (0, 0, DLV_INIT, DSH_EXC_SELF);
@@ -281,4 +282,36 @@ bool Lapic::hlt_other_cpus()
     }
 
     return success;
+}
+
+extern "C" char __start_ap    [];
+extern "C" char __start_ap_end[];
+
+void Lapic::ap_code_manage(bool const prepare)
+{
+    static char backup[128] { };
+    static bool valid { };
+
+    if (!prepare) {
+
+        if (!valid)
+            return;
+
+        memcpy(Hpt::remap (Pd::kern.quota, AP_BOOT_PADDR), backup, sizeof(backup));
+        valid = false;
+
+        return;
+    }
+
+    assert (static_cast<size_t>(__start_ap_end - __start_ap) < sizeof(backup));
+
+    if (valid)
+        return;
+
+    void * const ap_ptr { Hpt::remap (Pd::kern.quota, AP_BOOT_PADDR)};
+
+    memcpy(backup, ap_ptr,     sizeof(backup));
+    memcpy(ap_ptr, __start_ap, sizeof(backup));
+
+    valid = true;
 }

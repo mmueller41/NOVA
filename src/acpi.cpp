@@ -254,6 +254,9 @@ bool Acpi::suspend(uint8 const sleep_type_a, uint8 const sleep_type_b)
 
     Ec::hlt_prepare();
 
+    /* on resume the BSP also use the AP startup code */
+    Lapic::ap_code_prepare();
+
     auto &vector = *static_cast<Acpi_table_facs *>(Hpt::remap (Pd::kern.quota, facs));
     vector.firmware_waking_vector   = static_cast<uint32>(AP_BOOT_PADDR);
     vector.x_firmware_waking_vector = 0;
