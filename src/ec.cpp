@@ -39,7 +39,7 @@ Sm *Ec::auth_suspend;
 uint64 Ec::killed_time[NUM_CPU];
 
 // Constructors
-Ec::Ec (Pd *own, void (*f)(), unsigned c) : Kobject (EC, static_cast<Space_obj *>(own)), cont (f), pd (own), partner (nullptr), prev (nullptr), next (nullptr), fpu (nullptr), cpu (static_cast<uint16>(c)), glb (true), evt (0), timeout (this), user_utcb (0), xcpu_sm (nullptr), pt_oom(nullptr)
+Ec::Ec (Pd *own, void (*f)(), unsigned c) : Kobject (EC, static_cast<Space_obj *>(own)), cont (f), pd (own), cpu (static_cast<uint16>(c)), glb (true), evt (0), timeout (this), user_utcb (0), xcpu_sm (nullptr), pt_oom(nullptr)
 {
     trace (TRACE_SYSCALL, "EC:%p created (PD:%p Kernel)", this, own);
 
@@ -48,7 +48,7 @@ Ec::Ec (Pd *own, void (*f)(), unsigned c) : Kobject (EC, static_cast<Space_obj *
     regs.vmcb_state = nullptr;
 }
 
-Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, mword s, Pt *oom) : Kobject (EC, static_cast<Space_obj *>(own), sel, 0xd, free, pre_free), cont (f), pd (p), partner (nullptr), prev (nullptr), next (nullptr), fpu (nullptr), cpu (static_cast<uint16>(c)), glb (!!f), evt (e), timeout (this), user_utcb (u), xcpu_sm (nullptr), pt_oom (oom)
+Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, mword s, Pt *oom) : Kobject (EC, static_cast<Space_obj *>(own), sel, 0xd, free, pre_free), cont (f), pd (p), cpu (static_cast<uint16>(c)), glb (!!f), evt (e), timeout (this), user_utcb (u), xcpu_sm (nullptr), pt_oom (oom)
 {
     // Make sure we have a PTAB for this CPU in the PD
     pd->Space_mem::init (pd->quota, c);
@@ -147,7 +147,7 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, stati
         pt_oom = nullptr;
 }
 
-Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, Pt *pt) : Kobject (EC, static_cast<Space_obj *>(own), clone->node_base, 0xd, free, pre_free), cont (f), regs (clone->regs), rcap (nullptr), utcb (clone->utcb), pd (p), partner (nullptr), prev (nullptr), next (nullptr), fpu (clone->fpu), cpu (static_cast<uint16>(c)), glb (!!f), evt (clone->evt), timeout (this), user_utcb (clone->user_utcb), xcpu_sm (clone->xcpu_sm), pt_oom(pt)
+Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, Pt *pt) : Kobject (EC, static_cast<Space_obj *>(own), clone->node_base, 0xd, free, pre_free), cont (f), regs (clone->regs), rcap (nullptr), utcb (clone->utcb), pd (p), fpu (clone->fpu), cpu (static_cast<uint16>(c)), glb (!!f), evt (clone->evt), timeout (this), user_utcb (clone->user_utcb), xcpu_sm (clone->xcpu_sm), pt_oom(pt)
 {
     if (EXPECT_FALSE((fpowner == clone) && clone->fpu && Cmdline::fpu_lazy)) {
         Fpu::enable();
@@ -359,11 +359,15 @@ void Ec::ret_user_vmresume()
     if (EXPECT_FALSE (get_cr2() != current->regs.cr2))
         set_cr2 (current->regs.cr2);
 
+    Fpu::State_xsv::make_current (Fpu::hst_xsv, current->regs.gst_xsv);    // Restore XSV guest state
+
     asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR)
                   "vmresume;"
                   "vmlaunch;"
                   "mov %1," EXPAND (PREG(sp);)
                   : : "m" (current->regs), "i" (CPU_LOCAL_STCK + PAGE_SIZE) : "memory");
+
+    Fpu::State_xsv::make_current (current->regs.gst_xsv, Fpu::hst_xsv);    // Restore XSV host state
 
     trace (0, "VM entry failed with error %#lx", Vmcs::read (Vmcs::VMX_INST_ERROR));
 
@@ -385,6 +389,8 @@ void Ec::ret_user_vmrun()
         else
             current->regs.vtlb->flush (true);
     }
+
+    Fpu::State_xsv::make_current (Fpu::hst_xsv, current->regs.gst_xsv);    // Restore XSV guest state
 
     asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR)
                   "clgi;"

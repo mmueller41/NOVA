@@ -140,6 +140,9 @@ class Msr
             IA32_HWP_REQUEST        = 0x774,
 
             IA32_EXT_XAPIC          = 0x800,
+
+            IA32_XSS                = 0xda0,        // XSAVE
+
             IA32_EFER               = 0xc0000080,
             IA32_STAR               = 0xc0000081,
             IA32_LSTAR              = 0xc0000082,

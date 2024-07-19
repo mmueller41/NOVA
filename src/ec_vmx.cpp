@@ -196,6 +196,8 @@ void Ec::vmx_cr()
 
 void Ec::handle_vmx()
 {
+    Fpu::State_xsv::make_current (current->regs.gst_xsv, Fpu::hst_xsv);    // Restore XSV host state
+
     Cpu::hazard = (Cpu::hazard | HZD_DS_ES | HZD_TR) & ~HZD_FPU;
 
     mword reason = Vmcs::read (Vmcs::EXI_REASON) & 0xff;

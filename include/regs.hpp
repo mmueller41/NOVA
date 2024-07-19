@@ -25,6 +25,7 @@
 #include "atomic.hpp"
 #include "hazards.hpp"
 #include "types.hpp"
+#include "fpu.hpp"
 
 class Vmcb_state;
 class Vmcs_state;
@@ -213,12 +214,16 @@ class Exc_regs : public Sys_regs
 class Cpu_regs : public Exc_regs
 {
     private:
-        mword   hzd;
+
+        mword hzd { };
 
     public:
-        uint64  tsc_offset;
-        uint64  tsc_aux;
-        mword   mtd;
+
+        uint64  tsc_offset { };
+        uint64  tsc_aux    { };
+        mword   mtd        { };
+
+        Fpu::State_xsv gst_xsv { };
 
         ALWAYS_INLINE
         inline mword hazard() const { return hzd; }

@@ -66,16 +66,16 @@ unsigned    Cpu::patch[NUM_CPU];
 unsigned    Cpu::row;
 
 uint32      Cpu::name[12];
-uint32      Cpu::features[10];
+uint32      Cpu::features[11];
 bool        Cpu::bsp;
 bool        Cpu::preemption;
 unsigned    Cpu::mwait_hint;
 
 void Cpu::check_features()
 {
-    unsigned top, tpp = 1, cpp = 1;
+    unsigned top = 0, tpp = 1, cpp = 1;
 
-    uint32 eax, ebx, ecx, edx;
+    uint32 eax = 0, ebx = 0, ecx = 0, edx = 0;
 
     cpuid (0, eax, ebx, ecx, edx);
 
@@ -95,24 +95,42 @@ void Cpu::check_features()
 
     switch (static_cast<uint8>(eax)) {
         case 0x1a ... 0xff:
+            eax = ebx = ecx = edx = 0;
             cpuid (0x1a, 0, eax, ebx, ecx, edx);
             core_type[Cpu::id] = uint8((eax >> 24) & 0xffu);
             [[fallthrough]];
         default:
+            eax = ebx = ecx = edx = 0;
+            cpuid (0xd, 0, eax, ebx, ecx, edx);
+            Fpu::hst_xsv.xcr = Fpu::managed & ((uint64(edx) << 32) | eax);
+
+            eax = ebx = ecx = edx = 0;
+            cpuid (0xd, 1, features[10], ebx, ecx, edx);
+            Fpu::hst_xsv.xss = Fpu::managed & ((uint64(edx) << 32) | ecx);
+
+            Fpu::compact = !!(Cpu::feature (Cpu::FEAT_FPU_COMPACT));
+
+            [[fallthrough]];
+        case 0x7 ... 0xc:
+            eax = ebx = ecx = edx = 0;
             cpuid (0x7, 0, eax, features[3], ecx, edx);
             /* hybrid flag (edx & (1u << 15)) */
             [[fallthrough]];
         case 0x6:
+            eax = ebx = ecx = edx = 0;
             cpuid (0x6, features[2], ebx, features[6], edx);
             [[fallthrough]];
         case 0x5:
+            eax = ebx = ecx = edx = 0;
             cpuid (0x5, 0, eax, ebx, features[8], features[9]);
             [[fallthrough]];
         case 0x4:
+            eax = ebx = ecx = edx = 0;
             cpuid (0x4, 0, eax, ebx, ecx, edx);
             cpp = (eax >> 26 & 0x3f) + 1;
             [[fallthrough]];
         case 0x1 ... 0x3:
+            eax = ebx = ecx = edx = 0;
             cpuid (0x1, eax, ebx, features[1], features[0]);
             family[Cpu::id]   = ((eax >> 8 & 0xf) + (eax >> 20 & 0xff)) & 0xff;
             model[Cpu::id]    = ((eax >> 4 & 0xf) + (eax >> 12 & 0xf0)) & 0xff;
@@ -124,6 +142,7 @@ void Cpu::check_features()
 
     patch[Cpu::id] = static_cast<unsigned>(Msr::read<uint64>(Msr::IA32_BIOS_SIGN_ID) >> 32);
 
+    eax = ebx = ecx = edx = 0;
     cpuid (0x80000000, eax, ebx, ecx, edx);
 
     unsigned smt = 0;
@@ -132,11 +151,13 @@ void Cpu::check_features()
         switch (static_cast<uint8>(eax)) {
             case 0x1e ... 0xff:
                 if (vendor == AMD && family[Cpu::id] >= 0x17) {
+                    eax = ebx = ecx = edx = 0;
                     cpuid (0x8000001e, eax, ebx, ecx, edx);
                     smt = ((ebx >> 8) & 0xff) + 1;
                 }
                 [[fallthrough]];
             default:
+                eax = ebx = ecx = edx = 0;
                 cpuid (0x8000000a, Vmcb::svm_version, ebx, ecx, Vmcb::svm_feature);
 
                 if (ebx < Space_mem::asid_alloc.max())
@@ -145,6 +166,7 @@ void Cpu::check_features()
                 [[fallthrough]];
             case 0x8 ... 0x9:
                 if (vendor == AMD && smt) {
+                    eax = ebx = ecx = edx = 0;
                     cpuid (0x80000008, eax, ebx, tpp, edx);
                     if ((tpp >> 12) & 0xf)
                         tpp = 1 << ((tpp >> 12) & 0xf);
@@ -155,18 +177,23 @@ void Cpu::check_features()
                 }
                 [[fallthrough]];
             case 0x7:
+                eax = ebx = ecx = edx = 0;
                 cpuid (0x80000007, eax, ebx, ecx, features[7]);
                 [[fallthrough]];
             case 0x4 ... 0x6:
+                eax = ebx = ecx = edx = 0;
                 cpuid (0x80000004, name[8], name[9], name[10], name[11]);
                 [[fallthrough]];
             case 0x3:
+                eax = ebx = ecx = edx = 0;
                 cpuid (0x80000003, name[4], name[5], name[6], name[7]);
                 [[fallthrough]];
             case 0x2:
+                eax = ebx = ecx = edx = 0;
                 cpuid (0x80000002, name[0], name[1], name[2], name[3]);
                 [[fallthrough]];
             case 0x1:
+                eax = ebx = ecx = edx = 0;
                 cpuid (0x80000001, eax, ebx, features[5], features[4]);
         }
 
@@ -191,6 +218,7 @@ void Cpu::check_features()
             Msr::write (Msr::AMD_IPMR, Msr::read<uint32>(Msr::AMD_IPMR) & ~(3ul << 27));
 
     // enable PAT if available
+    eax = ebx = ecx = edx = 0;
     cpuid (0x1, eax, ebx, ecx, edx);
     if (edx & (1 << 16)) {
         uint32 cr_pat = Msr::read<uint32>(Msr::IA32_CR_PAT) & 0xffff00ff;
@@ -294,10 +322,15 @@ void Cpu::init(bool resume)
     setup_pcid();
 
     mword cr4 = get_cr4();
-    if (EXPECT_TRUE (feature (FEAT_SMEP)))
-        cr4 |= Cpu::CR4_SMEP;
-    if (EXPECT_TRUE (feature (FEAT_SMAP)))
-        cr4 |= Cpu::CR4_SMAP;
+
+    if (EXPECT_TRUE (feature (FEAT_SMEP ))) cr4 |= Cpu::CR4_SMEP;
+    if (EXPECT_TRUE (feature (FEAT_SMAP ))) cr4 |= Cpu::CR4_SMAP;
+#ifdef __x86_64__
+    if (EXPECT_TRUE (feature (FEAT_XSAVE))) cr4 |= Cpu::CR4_OSXSAVE;
+#else
+    Cpu::defeature (Cpu::FEAT_XSAVE);
+#endif
+
     if (cr4 != get_cr4())
         set_cr4 (cr4);
 
@@ -323,8 +356,10 @@ void Cpu::init(bool resume)
            Cpu::feature (Cpu::FEAT_MWAIT_EXT) ? "+E" : "",
            Cpu::feature (Cpu::FEAT_MWAIT_IRQ) ? "+I" : "");
 
-    if (!resume)
+    if (!resume) {
+        Fpu::probe();
         Hip::add_cpu();
+    }
 
     if (Cpu::feature (Cpu::FEAT_RDTSCP))
         Msr::write<uint64>(Msr::IA32_TSC_AUX, Cpu::id);

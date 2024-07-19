@@ -53,10 +53,10 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         Ec *        rcap { nullptr };
         Utcb *      utcb { nullptr };
         Refptr<Pd>  pd;
-        Ec *        partner;
-        Ec *        prev;
-        Ec *        next;
-        Fpu *       fpu;
+        Ec *        partner { };
+        Ec *        prev    { };
+        Ec *        next    { };
+        Fpu *       fpu     { };
         union {
             struct {
                 uint16  cpu;

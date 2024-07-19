@@ -26,6 +26,7 @@
 #include "config.hpp"
 #include "types.hpp"
 #include "assert.hpp"
+#include "macros.hpp"
 
 class Cpu
 {
@@ -65,10 +66,11 @@ class Cpu
             FEAT_MCA            = 14,
             FEAT_ACPI           = 22,
             FEAT_HTT            = 28,
-            FEAT_MONITOR_MWAIT  = 32 * 1 + 3,
-            FEAT_VMX            = 32 * 1 + 5,
-            FEAT_PCID           = 49,
-            FEAT_TSC_DEADLINE   = 56,
+            FEAT_MONITOR_MWAIT  = 32 * 1 +  3,
+            FEAT_VMX            = 32 * 1 +  5,
+            FEAT_PCID           = 32 * 1 + 17,
+            FEAT_TSC_DEADLINE   = 32 * 1 + 24,
+            FEAT_XSAVE          = 32 * 1 + 26,
             FEAT_CPU_TEMP       = 64,
             FEAT_PKG_TEMP       = 70,
             FEAT_HWP_7          = 71,
@@ -81,12 +83,14 @@ class Cpu
             FEAT_RDTSCP         = 32 * 4 + 27,
             FEAT_CMP_LEGACY     = 161,
             FEAT_SVM            = 162,
-            FEAT_HCFC           = 32 * 6,
-            FEAT_EPB            = 32 * 6 + 3,
-            FEAT_PSTATE_AMD     = 32 * 7 + 7,
-            FEAT_TSC_INVARIANT  = 32 * 7 + 8,
-            FEAT_MWAIT_EXT      = 32 * 8 + 0,
-            FEAT_MWAIT_IRQ      = 32 * 8 + 1,
+            FEAT_HCFC           = 32 *  6,
+            FEAT_EPB            = 32 *  6 + 3,
+            FEAT_PSTATE_AMD     = 32 *  7 + 7,
+            FEAT_TSC_INVARIANT  = 32 *  7 + 8,
+            FEAT_MWAIT_EXT      = 32 *  8 + 0,
+            FEAT_MWAIT_IRQ      = 32 *  8 + 1,
+            FEAT_XSAVEOPT       = 32 * 10 + 0,
+            FEAT_FPU_COMPACT    = 32 * 10 + 3
         };
 
         enum
@@ -117,18 +121,19 @@ class Cpu
 
         enum
         {
-            CR4_DE          = 1UL << 3,         // 0x8
-            CR4_PSE         = 1UL << 4,         // 0x10
-            CR4_PAE         = 1UL << 5,         // 0x20
-            CR4_MCE         = 1UL << 6,         // 0x40
-            CR4_PGE         = 1UL << 7,         // 0x80
-            CR4_OSFXSR      = 1UL << 9,         // 0x200
-            CR4_OSXMMEXCPT  = 1UL << 10,        // 0x400
-            CR4_VMXE        = 1UL << 13,        // 0x2000
-            CR4_SMXE        = 1UL << 14,        // 0x4000
-            CR4_PCIDE       = 1UL << 17,        // 0x20000
-            CR4_SMEP        = 1UL << 20,        // 0x100000
-            CR4_SMAP        = 1UL << 21,        // 0x200000
+            CR4_DE          = BIT64 ( 3),
+            CR4_PSE         = BIT64 ( 4),
+            CR4_PAE         = BIT64 ( 5),
+            CR4_MCE         = BIT64 ( 6),
+            CR4_PGE         = BIT64 ( 7),
+            CR4_OSFXSR      = BIT64 ( 9),
+            CR4_OSXMMEXCPT  = BIT64 (10),
+            CR4_VMXE        = BIT64 (13),
+            CR4_SMXE        = BIT64 (14),
+            CR4_PCIDE       = BIT64 (17),
+            CR4_OSXSAVE     = BIT64 (18),
+            CR4_SMEP        = BIT64 (20),
+            CR4_SMAP        = BIT64 (21),
         };
 
         enum
@@ -183,7 +188,7 @@ class Cpu
         static unsigned row                 CPULOCAL;
 
         static uint32 name[12]              CPULOCAL;
-        static uint32 features[10]          CPULOCAL;
+        static uint32 features[11]          CPULOCAL;
         static bool bsp                     CPULOCAL;
         static bool preemption              CPULOCAL;
         static unsigned mwait_hint          CPULOCAL;

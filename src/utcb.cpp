@@ -237,6 +237,11 @@ bool Utcb::load_vmx (Cpu_regs *regs)
     if (m & Mtd::TSC_AUX)
         tsc_aux = regs->tsc_aux;
 
+    if (m & Mtd::XSAVE) {
+        xcr0 = regs->gst_xsv.xcr;
+        xss  = regs->gst_xsv.xss;
+    }
+
 #ifdef __x86_64__
     if (m & Mtd::EFER)
         efer = Vmcs::read (Vmcs::GUEST_EFER);
@@ -423,6 +428,11 @@ bool Utcb::save_vmx (Cpu_regs *regs)
     if (mtd & Mtd::TSC)
         regs->add_tsc_offset (tsc_off);
 
+    if (mtd & Mtd::XSAVE) {
+        regs->gst_xsv.xcr = Fpu::State_xsv::constrain_xcr (xcr0);
+        regs->gst_xsv.xss = Fpu::State_xsv::constrain_xss (xss);
+    }
+
 #ifdef __x86_64__
     if (mtd & Mtd::EFER)
         regs->write_efer<Vmcs> (efer);
@@ -585,6 +595,11 @@ bool Utcb::load_svm (Cpu_regs *regs)
     if (m & Mtd::TSC_AUX)
         tsc_aux = regs->tsc_aux;
 
+    if (m & Mtd::XSAVE) {
+        xcr0 = regs->gst_xsv.xcr;
+        xss  = regs->gst_xsv.xss;
+    }
+
 #ifdef __x86_64__
     if (m & Mtd::EFER)
         efer = vmcb->efer;
@@ -717,6 +732,11 @@ bool Utcb::save_svm (Cpu_regs *regs)
 
     if (mtd & Mtd::TSC_AUX)
         regs->tsc_aux = tsc_aux;
+
+    if (mtd & Mtd::XSAVE) {
+        regs->gst_xsv.xcr = Fpu::State_xsv::constrain_xcr (xcr0);
+        regs->gst_xsv.xss = Fpu::State_xsv::constrain_xss (xss);
+    }
 
 #ifdef __x86_64__
     if (mtd & Mtd::EFER)
