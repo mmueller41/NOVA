@@ -134,7 +134,7 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
     }
 }
 
-Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, static_cast<Space_obj *>(own), 0, 0xd, free, pre_free), cont (f), regs (clone->regs), rcap (clone), utcb (clone->utcb), pd (p), partner (nullptr), prev (nullptr), next (nullptr), fpu (clone->fpu), cpu (static_cast<uint16>(c)), glb (!!f), evt (clone->evt), timeout (this), user_utcb (0), xcpu_sm (clone->xcpu_sm), pt_oom(clone->pt_oom)
+Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, static_cast<Space_obj *>(own), 0, 0xd, free, pre_free), cont (f), regs (clone->regs), rcap (clone), utcb (clone->utcb), pd (p), fpu (clone->fpu), cpu (static_cast<uint16>(c)), glb (!!f), evt (clone->evt), timeout (this), user_utcb (0), xcpu_sm (clone->xcpu_sm), pt_oom(clone->pt_oom)
 {
     // Make sure we have a PTAB for this CPU in the PD
     pd->Space_mem::init (pd->quota, c);
@@ -147,7 +147,7 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, stati
         pt_oom = nullptr;
 }
 
-Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, Pt *pt) : Kobject (EC, static_cast<Space_obj *>(own), clone->node_base, 0xd, free, pre_free), cont (f), regs (clone->regs), rcap (nullptr), utcb (clone->utcb), pd (p), fpu (clone->fpu), cpu (static_cast<uint16>(c)), glb (!!f), evt (clone->evt), timeout (this), user_utcb (clone->user_utcb), xcpu_sm (clone->xcpu_sm), pt_oom(pt)
+Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, Pt *pt) : Kobject (EC, static_cast<Space_obj *>(own), clone->node_base, 0xd, free, pre_free), cont (f), regs (clone->regs), utcb (clone->utcb), pd (p), fpu (clone->fpu), cpu (static_cast<uint16>(c)), glb (!!f), evt (clone->evt), timeout (this), user_utcb (clone->user_utcb), xcpu_sm (clone->xcpu_sm), pt_oom(pt)
 {
     if (EXPECT_FALSE((fpowner == clone) && clone->fpu && Cmdline::fpu_lazy)) {
         Fpu::enable();
@@ -561,10 +561,13 @@ void Ec::xcpu_return()
 
     current->xcpu_sm->up (ret_xcpu_reply);
 
+    if (current->rcap->fpu == current->fpu)
+        current->fpu = nullptr;
+
     current->rcap    = nullptr;
     current->utcb    = nullptr;
-    current->fpu     = nullptr;
     current->xcpu_sm = nullptr;
+    current->cont    = dead;
 
     Rcu::call(current);
     Rcu::call(Sc::current);

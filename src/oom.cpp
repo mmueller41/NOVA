@@ -147,15 +147,20 @@ void Ec::oom_xcpu_return()
     assert (current->utcb);
     assert (Sc::current->ec == current);
 
-    current->xcpu_sm->up (C);
+    auto sm = current->xcpu_sm;
+
+    if (current->rcap->fpu == current->fpu)
+        current->fpu = nullptr;
 
     current->rcap    = nullptr;
     current->utcb    = nullptr;
-    current->fpu     = nullptr;
     current->xcpu_sm = nullptr;
+    current->cont    = dead;
 
     Rcu::call(current);
     Rcu::call(Sc::current);
+
+    sm->up (C);
 
     Sc::schedule(true);
 }

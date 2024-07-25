@@ -58,7 +58,7 @@ void Ec::claim_fpu()
     Fpu::enable();
     Cpu::hazard &= ~HZD_FPU;
 
-    if (!current->idle_ec())
+    if (!current->idle_ec() && current->cont != dead)
         current->save_fpu();
 
     if (!this->idle_ec())
