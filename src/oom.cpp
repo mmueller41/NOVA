@@ -129,6 +129,17 @@ void Ec::oom_xcpu(Pt * pt, mword src_pd_id, mword oom_state)
     Ec *xcpu_ec = new (*Pd::current) Ec (Pd::current, Pd::current, sys_xcpu_call_oom<C>, pt->ec->cpu, this);
     xcpu_ec->regs.set_pt (reinterpret_cast<mword>(pt), src_pd_id, oom_state);
 
+    if (!xcpu_ec->rcap) {
+        trace (0, "xCPU OOM construction failure");
+
+        Ec::destroy(xcpu_ec, *Pd::current);
+        Sm::destroy(this->xcpu_sm, *Pd::current);
+
+        this->xcpu_sm = nullptr;
+
+        sys_finish<Sys_regs::BAD_PAR>();
+    }
+
     Sc *xcpu_sc = new (*Pd::current) Sc (Pd::current, xcpu_ec, xcpu_ec->cpu, Sc::current);
 
     this->cont = ret_xcpu_reply_oom<C>;
@@ -152,7 +163,6 @@ void Ec::oom_xcpu_return()
     if (current->rcap->fpu == current->fpu)
         current->fpu = nullptr;
 
-    current->rcap    = nullptr;
     current->utcb    = nullptr;
     current->xcpu_sm = nullptr;
     current->cont    = dead;

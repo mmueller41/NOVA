@@ -32,10 +32,10 @@ class Sc : public Kobject, public Refcount
 
     public:
         Refptr<Ec> const ec;
-        unsigned const cpu;
-        uint16   const prio;
+        unsigned       cpu;
+        uint16         prio;
         uint16         disable { 0 };
-        uint64   const budget;
+        uint64         budget;
         uint64         time    { 0 };
         uint64         time_m  { 0 };
 
@@ -92,6 +92,7 @@ class Sc : public Kobject, public Refcount
         Sc &operator = (Sc const &);
 
     public:
+
         static Sc *     current     CPULOCAL_HOT;
         static unsigned ctr_link    CPULOCAL;
         static unsigned ctr_loop    CPULOCAL;
@@ -128,4 +129,16 @@ class Sc : public Kobject, public Refcount
 
         ALWAYS_INLINE
         void inline measured() { time_m = time; }
+
+        void xcpu_clone(Sc const & sc, uint16 const tcpu)
+        {
+            prio    = sc.prio;
+            budget  = sc.budget;
+            left    = sc.left;
+            disable = false;
+            cpu     = tcpu;
+            time    = 0;
+            time_m  = 0;
+            tsc     = 0;
+        }
 };

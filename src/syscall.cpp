@@ -1247,14 +1247,46 @@ void Ec::sys_xcpu_call()
 
     enum { UNUSED = 0, CNT = 0 };
 
-    current->xcpu_sm = new (*Pd::current) Sm (Pd::current, UNUSED, CNT);
+    if (!current->sc_xcpu) {
+        current->xcpu_sm = new (*Pd::current) Sm (Pd::current, UNUSED, CNT);
+        current->ec_xcpu = new (*Pd::current) Ec (Pd::current, Pd::current, Ec::sys_call, ec->cpu, current);
 
-    Ec *xcpu_ec = new (*Pd::current) Ec (Pd::current, Pd::current, Ec::sys_call, ec->cpu, current);
-    Sc *xcpu_sc = new (*xcpu_ec->pd) Sc (Pd::current, xcpu_ec, xcpu_ec->cpu, Sc::current);
+        if (!current->ec_xcpu->rcap) {
+            trace (0, "xCPU construction failure");
+
+            Ec::destroy(current->ec_xcpu, *Pd::current);
+            Sm::destroy(current->xcpu_sm, *Pd::current);
+
+            current->ec_xcpu = nullptr;
+            current->xcpu_sm = nullptr;
+
+            sys_finish<Sys_regs::BAD_PAR>();
+        }
+
+        current->sc_xcpu = new (*Pd::current) Sc (Pd::current, current->ec_xcpu, current->ec_xcpu->cpu, Sc::current);
+
+        current->sc_xcpu->add_ref();
+
+    } else {
+        bool sc_unused = Lapic::pause_loop_until(1, [&] {
+            return !current->sc_xcpu->last_ref(); });
+
+        if (!sc_unused) {
+            trace (0, "xCPU EC still in use");
+            sys_finish<Sys_regs::COM_TIM>();
+        }
+
+        current->xcpu_sm = new (*Pd::current) Sm (Pd::current, UNUSED, CNT);
+        current->ec_xcpu->xcpu_clone(*current, ec->cpu);
+        current->sc_xcpu->xcpu_clone(*Sc::current, ec->cpu);
+
+        current->sc_xcpu->add_ref();
+    }
 
     current->cont = ret_xcpu_reply;
 
-    xcpu_sc->remote_enqueue();
+    current->sc_xcpu->remote_enqueue();
+
     current->xcpu_sm->dn (false, 0);
 
     ret_xcpu_reply();

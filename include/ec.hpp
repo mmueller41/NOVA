@@ -57,6 +57,9 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         Ec *        prev    { };
         Ec *        next    { };
         Fpu *       fpu     { };
+        Ec *        ec_xcpu { };
+        Sc *        sc_xcpu { };
+
         union {
             struct {
                 uint16  cpu;
@@ -151,6 +154,18 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
                     Fpu::disable();
                     assert (!(Cpu::hazard & HZD_FPU));
                 }
+            }
+
+            if (e->ec_xcpu) {
+                auto ec = e->ec_xcpu;
+                e->ec_xcpu = nullptr;
+                Rcu::call(ec);
+            }
+
+            if (e->sc_xcpu) {
+                auto sc = e->sc_xcpu;
+                e->sc_xcpu = nullptr;
+                Rcu::call(sc);
             }
         }
 
@@ -500,6 +515,10 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         NORETURN
         static void xcpu_return();
+
+        void xcpu_revert(void (*)() = nullptr);
+
+        void xcpu_clone(Ec &, uint16);
 
         template <void (*)()>
         NORETURN

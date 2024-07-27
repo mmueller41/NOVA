@@ -143,6 +143,9 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, stati
     regs.vmcs_state = nullptr;
     regs.vmcb_state = nullptr;
 
+    if (rcap && !rcap->add_ref())
+        rcap = nullptr;
+
     if (pt_oom && !pt_oom->add_ref())
         pt_oom = nullptr;
 }
@@ -176,16 +179,7 @@ Ec::~Ec()
         /* should never happen, Ec have to pass xcpu_return */
         trace (0, "invalid state, still have xcpu_sm");
 
-        auto sm = xcpu_sm;
-
-        if (rcap && rcap->fpu == fpu)
-            fpu = nullptr;
-
-        xcpu_sm = nullptr;
-        rcap    = nullptr;
-        utcb    = nullptr;
-
-        sm->up ();
+        xcpu_revert();
     }
 
     pre_free(this);
@@ -193,8 +187,8 @@ Ec::~Ec()
     if (partner)
         trace (0, "invalid state, still have partner");
 
-    if (rcap)
-        trace (0, "invalid state, still have rcap");
+    if (rcap && rcap->del_rcu())
+        Rcu::call(rcap);
 
     if (pt_oom && pt_oom->del_ref())
         Pt::destroy(pt_oom);
@@ -549,6 +543,23 @@ void Ec::die (char const *reason, Exc_regs *r)
     reply (dead);
 }
 
+void Ec::xcpu_clone(Ec & from, uint16 const tcpu)
+{
+    cont = Ec::sys_call;
+    cpu  = tcpu;
+
+    regs            = from.regs;
+    regs.vtlb       = nullptr;
+    regs.vmcs_state = nullptr;
+    regs.vmcb_state = nullptr;
+
+    utcb    =  from.utcb;
+    xcpu_sm =  from.xcpu_sm;
+
+    // Make sure we have a PTAB for this CPU in the PD
+    from.pd->Space_mem::init (from.pd->quota, cpu);
+}
+
 void Ec::xcpu_return()
 {
     assert (current->xcpu_sm);
@@ -556,23 +567,31 @@ void Ec::xcpu_return()
     assert (current->utcb);
     assert (Sc::current->ec == current);
 
-    *current->rcap->exc_regs() = current->regs;
-    current->rcap->regs.mtd = current->regs.mtd;
+    current->xcpu_revert(ret_xcpu_reply);
 
-    current->xcpu_sm->up (ret_xcpu_reply);
-
-    if (current->rcap->fpu == current->fpu)
-        current->fpu = nullptr;
-
-    current->rcap    = nullptr;
-    current->utcb    = nullptr;
-    current->xcpu_sm = nullptr;
-    current->cont    = dead;
-
-    Rcu::call(current);
-    Rcu::call(Sc::current);
+    /* if last ref it will be handled by schedule(true) */
+    Sc::current->del_rcu();
 
     Sc::schedule(true);
+}
+
+void Ec::xcpu_revert(void (*sm_cont)())
+{
+    if (rcap) {
+        *rcap->exc_regs() = regs;
+         rcap->regs.mtd   = regs.mtd;
+
+        if (rcap->fpu == fpu)
+            fpu = nullptr;
+    }
+
+    auto sm = xcpu_sm;
+
+    utcb    = nullptr;
+    xcpu_sm = nullptr;
+    cont    = dead;
+
+    sm->up (sm_cont);
 }
 
 void Ec::idl_handler()
