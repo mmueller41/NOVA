@@ -39,7 +39,7 @@ Sm *Ec::auth_suspend;
 uint64 Ec::killed_time[NUM_CPU];
 
 // Constructors
-Ec::Ec (Pd *own, void (*f)(), unsigned c) : Kobject (EC, static_cast<Space_obj *>(own)), cont (f), pd (own), cpu (static_cast<uint16>(c)), glb (true), evt (0), timeout (this), user_utcb (0), xcpu_sm (nullptr), pt_oom(nullptr)
+Ec::Ec (Pd *own, void (*f)(), unsigned c) : Kobject (EC, static_cast<Space_obj *>(own)), cont (f), pd (own), cpu (static_cast<uint16>(c)), glb (true), evt (0), timeout (this)
 {
     trace (TRACE_SYSCALL, "EC:%p created (PD:%p Kernel)", this, own);
 
@@ -85,8 +85,6 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
             pd->insert_utcb (pd->quota, pd->mdb_cache, u, Buddy::ptr_to_phys(utcb) >> 12);
 
     } else {
-
-        utcb = nullptr;
 
         regs.dst_portal = VM_EXIT_STARTUP;
         regs.vtlb = new (pd->quota) Vtlb;
@@ -205,17 +203,21 @@ Ec::~Ec()
     }
 
     /* skip xCPU EC */
-    if (!regs.vtlb)
+    if (!vcpu())
         return;
 
     /* vCPU cleanup */
     Vtlb::destroy(regs.vtlb, pd->quota);
 
-    if (Hip::feature() & Hip::FEAT_VMX)
+    if ((Hip::feature() & Hip::FEAT_VMX) && regs.vmcs_state) {
+        regs.vmcs_state->clear();
         Vmcs_state::destroy(regs.vmcs_state, pd->quota);
+    }
     else
-    if (Hip::feature() & Hip::FEAT_SVM)
+    if ((Hip::feature() & Hip::FEAT_SVM) && regs.vmcb_state) {
+        regs.vmcb_state->clear();
         Vmcb_state::destroy(regs.vmcb_state, pd->quota);
+    }
 }
 
 void Ec::handle_hazard (mword hzd, void (*func)())
@@ -523,15 +525,30 @@ bool Ec::fixup (mword &eip)
 
 void Ec::die (char const *reason, Exc_regs *r)
 {
-    bool const show = current->pd == &Pd::kern || current->pd == &Pd::root;
+    bool const root_pd = current->pd == &Pd::root;
+    bool const kern_pd = current->pd == &Pd::kern;
+    bool const show    = kern_pd || root_pd ||
+                         (reason && strmatch(reason, "EXC", 3));
 
     if (!current->vcpu() || show) {
-        if (show || !strmatch(reason, "PT not found", 12))
-        trace (0, "Killed EC:%p SC:%p V:%#lx CS:%#lx IP:%#lx(%#lx) CR2:%#lx ERR:%#lx (%s) %s",
-               current, Sc::current, r->vec, r->cs, r->REG(ip), r->ARG_IP, r->cr2, r->err, reason, current->pd == &Pd::root ? "Pd::root" : current->pd == &Pd::kern ? "Pd::kern" : "");
-    } else
-        trace (0, "Killed EC:%p SC:%p V:%#lx CR0:%#lx CR3:%#lx CR4:%#lx (%s)",
-               current, Sc::current, r->vec, r->cr0_shadow, r->cr3_shadow, r->cr4_shadow, reason);
+        bool const pt_err = reason && strmatch(reason, "PT not found", 12);
+        if (show || (!pt_err && !Sc::current->disable)) {
+            trace (0, "%sKilled EC:%p SC:%p%s V:%#lx CS:%#lx IP:%#lx(%#lx) CR2:%#lx ERR:%#lx CONT:%p (%s)%s",
+                   root_pd ? "Pd::root " : (kern_pd ? "Pd::kern " : ""),
+                   current, Sc::current, Sc::current->disable ? "_d" : "",
+                   r->vec, r->cs, r->REG(ip), r->ARG_IP,
+                   r->cr2, r->err, current->cont, reason,
+                   r->user() ? "" : " - fault kernel");
+        }
+    }
+
+    if (current->vcpu() && !show) {
+        if (current->cont != dead && !Sc::current->disable)
+            trace (0, "vCPU Killed EC:%p SC:%p%s V:%#lx CR0:%#lx CR3:%#lx CR4:%#lx CONT=%p (%s)",
+                   current, Sc::current, Sc::current->disable ? "_d" : "",
+                   r->vec, r->cr0_shadow, r->cr3_shadow,
+                   r->cr4_shadow, current->cont, reason);
+    }
 
     Ec *ec = current->rcap;
 
@@ -621,4 +638,33 @@ void Ec::hlt_handler()
 {
     hlt_prepare();
     shutdown();
+}
+
+void Ec::flush_from_cpu()
+{
+    if (Sc::current->cpu != cpu)
+        return;
+
+    if (fpowner == this) {
+
+        fpowner->del_ref();
+
+        fpowner = nullptr;
+
+        if (Cmdline::fpu_lazy) {
+            assert (!(Cpu::hazard & HZD_FPU));
+            Fpu::disable();
+            assert (!(Cpu::hazard & HZD_FPU));
+        }
+    }
+
+    if (!vcpu())
+        return;
+
+    /* flush on right CPU, because of CPU local queues and Vmcs::current */
+    if ((Hip::feature() & Hip::FEAT_VMX) && regs.vmcs_state)
+        regs.vmcs_state->clear();
+    else
+    if ((Hip::feature() & Hip::FEAT_SVM) && regs.vmcb_state)
+        regs.vmcb_state->clear();
 }

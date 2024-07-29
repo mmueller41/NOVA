@@ -69,10 +69,10 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         };
         unsigned const evt;
         Timeout_hypercall timeout;
-        mword          user_utcb;
+        mword          user_utcb { };
 
-        Sm *         xcpu_sm;
-        Pt *         pt_oom;
+        Sm *         xcpu_sm { };
+        Pt *         pt_oom  { };
 
         uint64      tsc  { 0 };
         uint64      time { 0 };
@@ -140,21 +140,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
                 e->user_utcb = 0;
             }
 
-            // XXX If e is on another CPU and there the fpowner - this check will fail.
-            // XXX For now the destruction is delayed until somebody else grabs the FPU.
-            if (fpowner == e) {
-                assert (Sc::current->cpu == e->cpu);
-
-                bool zero = fpowner->del_ref();
-                assert (!zero);
-
-                fpowner      = nullptr;
-                if (Cmdline::fpu_lazy) {
-                    assert (!(Cpu::hazard & HZD_FPU));
-                    Fpu::disable();
-                    assert (!(Cpu::hazard & HZD_FPU));
-                }
-            }
+            e->flush_from_cpu();
 
             if (e->ec_xcpu) {
                 auto ec = e->ec_xcpu;
@@ -178,11 +164,6 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static void free (Rcu_elem * a)
         {
             Ec * e = static_cast<Ec *>(a);
-
-            if (e->regs.vtlb) {
-                trace(0, "leaking memory - vCPU EC memory re-usage not supported");
-                return;
-            }
 
             if (e->del_ref()) {
                 assert(e != Ec::current);
@@ -212,14 +193,19 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         inline unsigned clr_partner()
         {
             assert (partner == current);
+
             if (partner->rcap) {
-                bool last = partner->rcap->del_ref();
-                assert (!last);
+                Ec * ec = partner->rcap;
                 partner->rcap = nullptr;
+                if (ec->del_rcu())
+                    Rcu::call(ec);
             }
-            bool last = partner->del_ref();
-            assert (!last);
+
+            Ec * ec = partner;
             partner = nullptr;
+            if (ec->del_rcu())
+                Rcu::call(ec);
+
             return Sc::ctr_link--;
         }
 
@@ -238,6 +224,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         void claim_fpu ();
         void flush_fpu ();
+
+        void flush_from_cpu ();
 
         Ec(const Ec&);
         Ec &operator = (Ec const &);

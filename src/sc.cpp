@@ -50,7 +50,7 @@ Sc::Sc (Pd *own, mword sel, Ec *e, unsigned c, unsigned p, unsigned q) : Kobject
     trace (TRACE_SYSCALL, "SC:%p created (EC:%p CPU:%#x P:%#x Q:%#x)", this, e, c, p, q);
 }
 
-Sc::Sc (Pd *own, Ec *e, unsigned c, Sc *x) : Kobject (SC, static_cast<Space_obj *>(own), 0, 0x1, free_x), ec (e), cpu (c), prio (x->prio), budget (x->budget), left (x->left)
+Sc::Sc (Pd *own, Ec *e, unsigned c, Sc *x) : Kobject (SC, static_cast<Space_obj *>(own), 0, 0x1, free_xcpu), ec (e), cpu (c), prio (x->prio), budget (x->budget), left (x->left)
 {
     trace (TRACE_SYSCALL, "SC:%p created (EC:%p CPU:%#x P:%#x Q:%#llx) - xCPU", this, e, c, prio, budget / (Lapic::freq_bus / 1000));
 }
@@ -199,7 +199,10 @@ void Sc::rrq_handler()
 
         ptr = ptr->next == ptr ? nullptr : ptr->next;
 
-        sc->ready_enqueue (t, false);
+        if (sc->disable && sc->del_rcu() && !sc->ec->partner && !sc->ec->rcap)
+            Rcu::call(sc);
+        else
+            sc->ready_enqueue (t, false);
     }
 
     rq.queue = nullptr;
@@ -228,6 +231,57 @@ void Sc::pre_free(Rcu_elem * a)
     if (Sc::current == s)
         Cpu::hazard |= HZD_SCHED;
 
-    if (s->cpu != Sc::current->cpu)
+    if (s->cpu == Sc::current->cpu) {
+        if (s->ec)
+            s->ec->flush_from_cpu();
+    } else
         Lapic::send_ipi (s->cpu, VEC_IPI_RKE);
+}
+
+bool Sc::remove(Sc * s)
+{
+    if (s->cpu != Cpu::id) {
+
+        if (!s->del_rcu())
+            return false;
+
+        s->disable = true;
+        s->remote_enqueue(false);
+        return false;
+    }
+
+    return s->del_ref();
+}
+
+void Sc::free(Rcu_elem * a)
+{
+    Sc * s = static_cast<Sc *>(a);
+
+    if (!remove(s))
+        return;
+
+    assert(Sc::current != s);
+
+    if (s->time > s->time_m) {
+        assert(s->cpu < sizeof(killed_time) / sizeof(killed_time[0]));
+        Atomic::add(killed_time[s->cpu], s->time - s->time_m);
+    }
+
+    delete s;
+}
+
+void Sc::free_xcpu(Rcu_elem * a)
+{
+    Sc * s = static_cast<Sc *>(a);
+
+    if (!remove(s))
+        return;
+
+    assert(Sc::current != s);
+
+    assert(s->cpu < sizeof(cross_time) / sizeof(cross_time[0]));
+
+    Atomic::add(cross_time[s->cpu], s->time);
+
+    delete s;
 }

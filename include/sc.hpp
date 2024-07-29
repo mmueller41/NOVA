@@ -51,45 +51,19 @@ class Sc : public Kobject, public Refcount
             Sc *        queue { nullptr };
         } rq CPULOCAL;
 
-        static Sc *list[priorities] CPULOCAL;
-
-        static unsigned prio_top CPULOCAL;
+        static Sc *     list[priorities] CPULOCAL;
+        static unsigned prio_top         CPULOCAL;
 
         void ready_enqueue (uint64, bool, bool = true);
-
         void ready_dequeue (uint64);
 
-        static void free (Rcu_elem * a) {
-            Sc * s = static_cast<Sc *>(a);
-              
-            if (s->del_ref()) {
-                if (s->time > s->time_m) {
-                    assert(s->cpu < sizeof(killed_time) / sizeof(killed_time[0]));
-                    Atomic::add(killed_time[s->cpu], s->time - s->time_m);
-                }
+        static void free      (Rcu_elem *);
+        static void free_xcpu (Rcu_elem *);
+        static void pre_free  (Rcu_elem *);
+        static bool remove    (Sc *);
 
-                assert(Sc::current != s);
-                delete s;
-            }
-        }
-
-        static void free_x (Rcu_elem * a) {
-            Sc * s = static_cast<Sc *>(a);
-
-            bool r = s->del_ref();
-            assert (r);
-            assert(Sc::current != s);
-            assert(s->cpu < sizeof(cross_time) / sizeof(cross_time[0]));
-
-            Atomic::add(cross_time[s->cpu], s->time);
-
-            delete s;
-        }
-
-        static void pre_free(Rcu_elem *);
-
-        Sc(const Sc&);
-        Sc &operator = (Sc const &);
+        Sc              (Sc const &);
+        Sc & operator = (Sc const &);
 
     public:
 
