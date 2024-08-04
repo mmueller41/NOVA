@@ -163,15 +163,31 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, Pt *pt) : Kobject (E
         pt_oom = nullptr;
 }
 
-//De-constructor
 Ec::~Ec()
 {
     if (xcpu_sm) {
-        Sm::destroy(xcpu_sm, *pd);
+        /* should never happen, Ec have to pass xcpu_return */
+        trace (0, "invalid state, still have xcpu_sm");
+
+        auto sm = xcpu_sm;
+
+        if (rcap && rcap->fpu == fpu)
+            fpu = nullptr;
+
         xcpu_sm = nullptr;
+        rcap    = nullptr;
+        utcb    = nullptr;
+
+        sm->up ();
     }
 
     pre_free(this);
+
+    if (partner)
+        trace (0, "invalid state, still have partner");
+
+    if (rcap)
+        trace (0, "invalid state, still have rcap");
 
     if (pt_oom && pt_oom->del_ref())
         Pt::destroy(pt_oom);
@@ -510,7 +526,9 @@ void Ec::die (char const *reason, Exc_regs *r)
     Ec *ec = current->rcap;
 
     if (ec)
-        ec->cont = ec->cont == ret_user_sysexit ? static_cast<void (*)()>(sys_finish<Sys_regs::COM_ABT>) : dead;
+        ec->cont = (ec->cont == ret_user_sysexit || ec->cont == xcpu_return)
+                 ? static_cast<void (*)()>(sys_finish<Sys_regs::COM_ABT>)
+                 : dead;
 
     reply (dead);
 }
