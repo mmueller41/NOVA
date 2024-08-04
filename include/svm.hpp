@@ -164,30 +164,44 @@ class Vmcb_state
 
     private:
 
-        static Slab_cache cache;
-
+        static Slab_cache        cache;
         static Queue<Vmcb_state> queue CPULOCAL;
 
-        Vmcb_state *prev { nullptr }, *next { nullptr };
+        Vmcb_state * prev { };
+        Vmcb_state * next { };
 
-        Vmcb_state(const Vmcb_state&);
-        Vmcb_state &operator = (Vmcb_state const &);
+        uint16 const cpu;
+
+        Vmcb_state              (Vmcb_state const &);
+        Vmcb_state & operator = (Vmcb_state const &);
+
+        bool queued() { return prev || next; }
 
     public:
 
-        Vmcb &vmcb;
+        Vmcb & vmcb;
 
         ALWAYS_INLINE
         static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
 
-        Vmcb_state(Vmcb &v) : vmcb(v)
-        {
-            queue.enqueue(this);
-        }
+        Vmcb_state(Vmcb &v, uint16 cpuid) : cpu(cpuid), vmcb(v) { }
 
         ~Vmcb_state()
         {
-            queue.dequeue(this);
+            if (queued())
+                trace (0, "%s not de-queued", __func__);
+        }
+
+        inline void make_current()
+        {
+            if (Cpu::id == cpu && !queued())
+                queue.enqueue(this);
+        }
+
+        inline void clear()
+        {
+            if (Cpu::id == cpu && queued())
+                queue.dequeue(this);
         }
 
         static void flush_all_vmcb()

@@ -101,12 +101,14 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
                                               host_cr3,
                                               pd->ept.root(pd->quota));
 
-            regs.vmcs_state = new (pd->quota) Vmcs_state(*vmcs);
+            regs.vmcs_state = new (pd->quota) Vmcs_state(*vmcs, cpu);
+
             regs.vmcs_state->make_current();
 
             regs.nst_ctrl<Vmcs>();
 
             regs.vmcs_state->clear();
+
             cont = send_msg<ret_user_vmresume>;
             trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs_state, regs.vtlb);
 
@@ -117,10 +119,15 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
             auto vmcb = new (pd->quota) Vmcb (pd->quota, pd->Space_pio::walk(pd->quota),
                                               pd->npt.root(pd->quota), unsigned(pd->asid));
 
-            regs.vmcb_state = new (pd->quota) Vmcb_state(*vmcb);
-            regs.REG(ax) = Buddy::ptr_to_phys (vmcb);
+            regs.vmcb_state = new (pd->quota) Vmcb_state(*vmcb, cpu);
 
+            regs.vmcb_state->make_current();
+
+            regs.REG(ax) = Buddy::ptr_to_phys (vmcb);
             regs.nst_ctrl<Vmcb>();
+
+            regs.vmcb_state->clear();
+
             cont = send_msg<ret_user_vmrun>;
             trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCB:%p VTLB:%p)", this, p, regs.vmcb_state, regs.vtlb);
         }
@@ -266,6 +273,7 @@ void Ec::handle_hazard (mword hzd, void (*func)())
             Vmcs::write (Vmcs::TSC_OFFSET_HI, static_cast<mword>(current->regs.tsc_offset >> 32));
         } else
         if (func == ret_user_vmrun) {
+            current->regs.vmcb_state->make_current();
             current->regs.vmcb_state->vmcb.tsc_offset = current->regs.tsc_offset;
         }
     }
@@ -367,6 +375,8 @@ void Ec::ret_user_vmrun()
     mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_TSC | HZD_TSC_AUX | HZD_RCU | HZD_SCHED);
     if (EXPECT_FALSE (hzd))
         handle_hazard (hzd, ret_user_vmrun);
+
+    current->regs.vmcb_state->make_current();
 
     if (EXPECT_FALSE (Pd::current->gtlb.chk (Cpu::id))) {
         Pd::current->gtlb.clr (Cpu::id);

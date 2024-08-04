@@ -573,32 +573,31 @@ class Vmcs_state
 
     private:
 
-        static Slab_cache cache;
-
-        Vmcs &vmcs;
-
-        bool active { };
-
+        static Slab_cache        cache;
         static Queue<Vmcs_state> queue CPULOCAL;
 
-        Vmcs_state *prev { nullptr }, *next { nullptr };
+        Vmcs        & vmcs;
+        Vmcs_state  * prev   { };
+        Vmcs_state  * next   { };
+        uint16 const  cpu;
+        bool          active { };
 
-        Vmcs_state(const Vmcs_state&);
-        Vmcs_state &operator = (Vmcs_state const &);
+        Vmcs_state              (Vmcs_state const &);
+        Vmcs_state & operator = (Vmcs_state const &);
+
+        bool queued() const { return prev || next; }
 
     public:
 
         ALWAYS_INLINE
         static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
 
-        Vmcs_state(Vmcs &v) : vmcs(v)
-        {
-            queue.enqueue(this);
-        }
+        Vmcs_state(Vmcs &v, uint16 cpuid) : vmcs(v), cpu (cpuid) { }
 
         ~Vmcs_state()
         {
-            queue.dequeue(this);
+            if (queued())
+                trace (0, "%s not de-queued", __func__);
         }
 
         static void flush_all_vmcs()
@@ -611,6 +610,9 @@ class Vmcs_state
         ALWAYS_INLINE
         inline void make_current()
         {
+            if (Cpu::id == cpu && !queued())
+                queue.enqueue(this);
+
             vmcs.make_current();
 
             active = true;
@@ -619,6 +621,9 @@ class Vmcs_state
         ALWAYS_INLINE
         inline void clear()
         {
+            if (Cpu::id == cpu && queued())
+                queue.dequeue(this);
+
             if (!active)
                 return;
 

@@ -501,6 +501,8 @@ bool Utcb::load_svm (Cpu_regs *regs)
     }
 #endif
 
+    regs->vmcb_state->make_current();
+
     if (m & Mtd::RSP)
         rsp = static_cast<mword>(vmcb->rsp);
 
@@ -634,6 +636,8 @@ bool Utcb::save_svm (Cpu_regs *regs)
         regs->r15     = r15;
     }
 #endif
+
+    regs->vmcb_state->make_current();
 
     if (mtd & Mtd::RSP)
         vmcb->rsp = rsp;
