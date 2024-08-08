@@ -303,8 +303,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
             if (!Cpu::feature (Cpu::FEAT_RDTSCP))
                 return;
 
-            bool const current_is_vm = (current->regs.vmcb_state || current->regs.vmcs_state);
-            bool const next_is_vm    = (this->regs.vmcb_state    || this->regs.vmcs_state);
+            bool const current_is_vm = current->vcpu();
+            bool const next_is_vm    = this->vcpu();
 
             if (!current_is_vm && !next_is_vm)
                 return;
@@ -551,6 +551,6 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         ALWAYS_INLINE
         inline bool vcpu()
         {
-            return regs.vtlb || regs.vmcb_state || regs.vmcs_state;
+            return !utcb && (regs.vtlb || regs.vmcb_state || regs.vmcs_state);
         }
 };
