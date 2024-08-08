@@ -89,7 +89,7 @@ class Vtlb : public Pte<Vtlb, uint64, 3,  9, false, false>
         void flush (mword);
         void flush (bool);
 
-        static Reason miss (Exc_regs *, mword, mword &);
+        static Reason miss (Cpu_regs *, mword, mword &);
 
         ALWAYS_INLINE
         static inline void *operator new (size_t, Quota &quota) { return Buddy::allocator.alloc (0, quota, Buddy::NOFILL); }
