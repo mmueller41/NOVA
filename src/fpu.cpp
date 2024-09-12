@@ -34,7 +34,7 @@ void Fpu::save()
 {
 #ifdef __x86_64__
     if (Cpu::feature (Cpu::FEAT_XSAVE)) {
-        if (compact)
+        if (compact && !no_compact)
             asm volatile ("xsaves64 %0" : "=m" (*this)
                                         :  "d" (unsigned(managed >> 32)),
                                            "a" (unsigned(managed))
@@ -56,23 +56,42 @@ void Fpu::save()
         asm volatile ("fxsave %0" : "=m" (*this));
 }
 
+/* catch GP in case FPU state of vCPU of VM is bad */
+#define FIXUP(insn)                                           \
+    "clc\n"                                                   \
+    "1: " insn "; 2:\n"                                       \
+    ".section .fixup,\"a\"; .align 8;" EXPAND(WORD) " 1b,2b; .previous"
+
 void Fpu::load()
 {
+    bool bad = false;
+
 #ifdef __x86_64__
     if (Cpu::feature (Cpu::FEAT_XSAVE))
-        if (compact)
-            asm volatile ("xrstors64  %0" : : "m" (*this),
-                                              "d" (unsigned(managed >> 32)),
-                                              "a" (unsigned(managed))
-                                          : "memory");
+        if (compact && !no_compact)
+            asm volatile (FIXUP("xrstors64  %1")
+                          : "=@ccc"(bad)
+                          : "m" (*this),
+                            "d" (unsigned(managed >> 32)),
+                            "a" (unsigned(managed))
+                          : "memory");
         else
-            asm volatile ("xrstor64  %0" : : "m" (*this),
-                                             "d" (unsigned(managed >> 32)),
-                                             "a" (unsigned(managed))
-                                         : "memory");
+            asm volatile (FIXUP("xrstor64  %1")
+                          : "=@ccc"(bad)
+                          : "m" (*this),
+                            "d" (unsigned(managed >> 32)),
+                            "a" (unsigned(managed))
+                          : "memory");
     else
 #endif
-        asm volatile ("fxrstor %0" : : "m" (*this));
+        asm volatile (FIXUP("fxrstor %1") : "=@ccc"(bad) : "m" (*this));
+
+    if (bad) {
+        if (Cpu::feature (Cpu::FEAT_XSAVE) && compact)
+            no_compact = true;
+
+        Fpu::init();
+    }
 }
 
 void Fpu::probe()
@@ -96,7 +115,10 @@ void Fpu::probe()
     /* Use largest context size reported by any CPU */
     Fpu::size = max (Fpu::size, static_cast<size_t>(size));
 
-    if (Fpu::size > sizeof(Fpu)) {
+    static_assert (sizeof(Fpu) == sizeof(Fpu::legacy) + sizeof(Fpu::header) +
+                                  sizeof(Fpu::no_compact) + sizeof(Fpu::data));
+
+    if (Fpu::size > sizeof(Fpu) - sizeof(Fpu::no_compact)) {
         trace(0, "FPU: size %zu too large -> use legacy X87 FPU", Fpu::size);
         Cpu::defeature (Cpu::FEAT_XSAVE);
         Fpu::size = 512;

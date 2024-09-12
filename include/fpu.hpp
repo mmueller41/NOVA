@@ -91,7 +91,8 @@ class Fpu
         Legacy  legacy { };
         Header  header { };
 
-        char data [2560] { };
+        char data [2559] { };
+        bool no_compact  { };
 
         ALWAYS_INLINE
         static auto get_xcr (unsigned xcr)

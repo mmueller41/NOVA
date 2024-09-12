@@ -334,6 +334,16 @@ void Cpu::init(bool resume)
     if (cr4 != get_cr4())
         set_cr4 (cr4);
 
+    if (!resume) {
+        Fpu::probe();
+
+        /* XSAVE may be disabled by FPU::probe if state is too large */
+        if (cr4 & Cpu::CR4_OSXSAVE && !feature(FEAT_XSAVE)) {
+            cr4 &= ~mword(Cpu::CR4_OSXSAVE);
+            set_cr4 (cr4);
+        }
+    }
+
     Vmcs::init();
     Vmcb::init();
 
@@ -356,10 +366,8 @@ void Cpu::init(bool resume)
            Cpu::feature (Cpu::FEAT_MWAIT_EXT) ? "+E" : "",
            Cpu::feature (Cpu::FEAT_MWAIT_IRQ) ? "+I" : "");
 
-    if (!resume) {
-        Fpu::probe();
+    if (!resume)
         Hip::add_cpu();
-    }
 
     if (Cpu::feature (Cpu::FEAT_RDTSCP))
         Msr::write<uint64>(Msr::IA32_TSC_AUX, Cpu::id);
