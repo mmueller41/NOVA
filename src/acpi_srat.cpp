@@ -175,9 +175,9 @@ void Acpi_table_srat::add_mementry(Hip_mem *me, uint64 start, size_t size, uint3
 {
     //trace(TRACE_ACPI, "mem=: MEM range %x -- %llx -> NUMA node %d is regular", start, (start + size), numa_id);
     if (replacement)
-        trace(TRACE_ACPI, "memory block is replaced at %p with %llx of size %lx at node %d", me, start, size, numa_id);
+        trace(TRACE_ACPI, "memory block of type %u is replaced at %p with %llx of size %lx at node %d", me->type, me, start, size, numa_id);
     
-    struct Acpi_srat_hip_mem block { start, size, 1 };
+    struct Acpi_srat_hip_mem block { start, size, me->type };
     Hip::add_mem<Acpi_srat_hip_mem>(me, &block, numa_id);
     
     if (!replacement)
