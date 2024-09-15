@@ -176,8 +176,6 @@ void Console::vprintf (char const *format, va_list args)
 
 void Console::print (char const *format, ...)
 {
-    Lock_guard <Spinlock> guard (lock);
-
     for (Console *c = list; c; c = c->next) {
         va_list args;
         va_start (args, format);
@@ -188,8 +186,7 @@ void Console::print (char const *format, ...)
 
 void Console::panic (char const *format, ...)
 {
-    {   Lock_guard <Spinlock> guard (lock);
-
+    {   
         for (Console *c = list; c; c = c->next) {
             va_list args;
             va_start (args, format);
