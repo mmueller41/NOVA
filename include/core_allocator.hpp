@@ -32,7 +32,7 @@ class Core_allocator
         unsigned reclaim_cores(Cell *claimant, unsigned int);
 
     public:
-        mword alloc(Cell *, unsigned int);
+        mword alloc(Cell *, int);
 
         void yield(Cell *yielder, unsigned int cpu_id);
 
@@ -45,6 +45,11 @@ class Core_allocator
         ALWAYS_INLINE
         inline bool is_owner(Cell *claimant, mword const id) {
             return (claimant == owners[id].cell);
+        }
+
+        ALWAYS_INLINE
+        inline volatile Cell* owner(mword const id) {
+            return owners[id].cell;
         }
 
         void set_owner(Cell *, mword const);
