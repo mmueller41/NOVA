@@ -208,7 +208,7 @@ entry_sysenter:         LOAD_KSP
                         lea     -11*SIZE(%REG(sp)), %REG(sp)
                         SAVE_GPR
                         mov     $(CPU_LOCAL_STCK + PAGE_SIZE), %REG(sp)
-                        and     $0xff, %ARG_1
+                        and     $0x1f, %ARG_1
                         jmp     *syscall(,%ARG_1,SIZE)
 
 /*
