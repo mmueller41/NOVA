@@ -10,60 +10,94 @@ void Cell::add_cores(mword cpu_map) {
 
     while ((cpu = bit_scan_forward(cpu_map)) != -1)
     {
+        Channel *chan = Pd::current->worker_channels ? &Pd::current->worker_channels[cpu] : nullptr;
+    
+        if (!chan)
+            continue;
+
+        chan->limit = static_cast<unsigned short>(limit);
+        chan->remainder = static_cast<unsigned short>(remainder);
+
         Atomic::test_clr_bit(cpu_map, cpu);
         if (cpu >= NUM_CPU || !(_worker_scs[cpu])) {
-            //trace(TRACE_ERROR, "No worker found for CPU: %ld", cpu);
+            trace(TRACE_CPU, "No worker found for CPU: %ld", cpu);
             continue;
         }
-        _worker_sms[cpu]->up();
+        _worker_sms[cpu]
+            ->up();
     }
 }
-
+/*
 void Cell::reclaim_cores(unsigned int cores)
 {
+    if (!Pd::current->worker_channels)
+        return;
+    
+    Channel *chan = Pd::current->worker_channels ? &Pd::current->worker_channels[Cpu::id] : nullptr;
+
+    if (chan)
+        chan->delta_setflag = rdtsc();
+
     for (; cores > 0; cores--)
     {
         unsigned int cpu = static_cast<unsigned int>(bit_scan_forward(core_map));
         if (_pd->worker_channels && _worker_scs[cpu]) {
-            if (cores_to_reclaim & (1<<cpu))
+            if (cores_to_reclaim & (1 << cpu))
                 continue;
-            /*if (_workers[cpu]->blocked())
-                continue;*/
             Atomic::test_set_bit(cores_to_reclaim, cpu);
-            unsigned long volatile *channel = &(_pd->worker_channels[cpu]);
-            __atomic_store_n(channel, 1, __ATOMIC_SEQ_CST);
+            _pd->worker_channels[cpu].yield_flag = 1;
         }
         else
         {
             core_alloc.return_core(this, static_cast<unsigned int>(cpu));
+            const_cast<Cell *>(core_alloc.owner(cpu))->wake_core(static_cast<int>(cpu));
         }
     }
-}
+    if (chan)
+        chan->delta_setflag = rdtsc() - chan->delta_setflag;
+
+}*/
 
 unsigned Cell::yield_cores(mword cpu_map, bool release)
 {
     long cpu = 0;
     unsigned yielded = 0;
 
-    while ((cpu = bit_scan_forward(cpu_map)) != -1) {
+    Channel *chan = Pd::current->worker_channels ? &Pd::current->worker_channels[Cpu::id] : nullptr;
+
+    if (chan)
+        chan->delta_setflag = rdtsc();
+    while ((cpu = bit_scan_forward(cpu_map)) != -1)
+    {
         Atomic::test_clr_bit(cpu_map, cpu);
         if (_pd->worker_channels && _worker_scs[cpu]) {
-            if (cores_to_reclaim & (1<<cpu))
+
+            if (_pd->worker_channels[cpu].yield_flag)
                 continue;
             /*if (_workers[cpu]->blocked())
                 continue;*/
             Atomic::test_set_bit(cores_to_reclaim, cpu);
-            unsigned long volatile *channel = &(_pd->worker_channels[cpu]);
-            __atomic_store_n(channel, 1, __ATOMIC_SEQ_CST);
+            short expect = 0;
+            bool will_sleep = !__atomic_compare_exchange_n(&(_pd->worker_channels[cpu].yield_flag), &expect, 1, false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+            
+            if (will_sleep)
+                continue;
+
+            //_pd->worker_channels[cpu].yield_flag = 1;
+            // trace(TRACE_CPU, "Requested core %ld", cpu);
         }
         else
         {
             core_alloc.return_core(this, static_cast<unsigned int>(cpu));
+            const_cast<Cell *>(core_alloc.owner(cpu))->wake_core(static_cast<int>(cpu));
         }
-        if (release)
+        if (release) {
             core_alloc.yield(this, static_cast<unsigned int>(cpu));
+        }
         yielded++;
     }
+    if (chan)
+        chan->delta_setflag = rdtsc() - chan->delta_setflag;
     return yielded;
 }
 
