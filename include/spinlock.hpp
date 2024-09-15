@@ -46,6 +46,21 @@ class Spinlock
         }
 
         ALWAYS_INLINE
+        inline bool try_lock()
+        {
+            uint16 tmp = 0x100;
+            bool res = false;
+
+            asm volatile("     lock; xadd %0, %1;  "
+                         "     cmpb %h0, %b0;      "
+                         "     je 2f;              "
+                         "1:   mov $0, %2;         "
+                         "2:   mov $1, %2;         "
+                         : "+Q"(tmp), "+m"(val), "+m"(res) : : "memory");
+            return res;
+        }
+
+        ALWAYS_INLINE
         inline void unlock()
         {
             asm volatile ("incb %0" : "+m" (val) : : "memory");
