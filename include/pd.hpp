@@ -29,6 +29,7 @@
 
 class Pmc;
 class Cell;
+class Channel;
 class alignas(64) Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, public Space_obj
 {
     private:
@@ -79,7 +80,7 @@ class alignas(64) Pd : public Kobject, public Refcount, public Space_mem, public
     public:
         static Pd *current CPULOCAL_HOT;
         static Pd kern, root;
-        unsigned long volatile *worker_channels{nullptr};
+        struct Channel *worker_channels{nullptr};
 
         Quota quota { };
 
@@ -201,7 +202,7 @@ class alignas(64) Pd : public Kobject, public Refcount, public Space_mem, public
         inline void mxinit(mword eip, unsigned long *channel) 
         { 
             mx_worker_ip = eip;
-            worker_channels = channel;
+            worker_channels = reinterpret_cast<Channel*>(channel);
         }
 
         ALWAYS_INLINE
