@@ -90,9 +90,9 @@ class alignas(64) Sm : public Kobject, public Refcount, public Queue<Ec>, public
             if (!block)
                 Sc::schedule (false);
 
-            if (ec->cell()) {
+            /*if (ec->cell()) {
                 core_alloc.yield(ec->cell(), ec->cpu_id());
-            }
+            }*/
 
             ec->set_timeout (t, this);
 
