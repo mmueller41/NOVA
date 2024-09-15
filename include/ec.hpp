@@ -406,8 +406,9 @@ private:
                 assert(Sc::current);
                 enqueue(Sc::current);
             }
-
-            Sc::schedule (true);
+            Cpu::delta_block[Cpu::id] = rdtsc() - Cpu::delta_block[Cpu::id];
+            Cpu::delta_return[Cpu::id] = rdtsc();
+            Sc::schedule(true);
         }
 
         ALWAYS_INLINE

@@ -107,23 +107,26 @@ void Ec::send_msg()
     Exc_regs *r = &current->regs;
 
     Kobject *obj = Space_obj::lookup (current->evt + r->dst_portal).obj();
-    if (EXPECT_FALSE (obj->type() != Kobject::PT))
-        die ("PT not found");
+    if (EXPECT_FALSE (obj->type() != Kobject::PT)) {
+        trace(TRACE_ERROR, "Portal %lu not found", (current->evt + r->dst_portal));
+        die("PT not found");
+    }
 
-    Pt *pt = static_cast<Pt *>(obj);
-    Ec *ec = pt->ec;
+        Pt *pt = static_cast<Pt *>(obj);
+        Ec *ec = pt->ec;
 
-    if (EXPECT_FALSE (current->cpu != ec->xcpu))
-        die ("PT wrong CPU");
+        if (EXPECT_FALSE(current->cpu != ec->xcpu))
+            die("PT wrong CPU");
 
-    if (EXPECT_TRUE (!ec->cont)) {
-        current->cont = C;
-        current->set_partner (ec);
-        current->regs.mtd = pt->mtd.val;
-        ec->cont = recv_kern;
-        ec->regs.set_pt (pt->id);
-        ec->regs.set_ip (pt->ip);
-        ec->make_current();
+        if (EXPECT_TRUE(!ec->cont))
+        {
+            current->cont = C;
+            current->set_partner(ec);
+            current->regs.mtd = pt->mtd.val;
+            ec->cont = recv_kern;
+            ec->regs.set_pt(pt->id);
+            ec->regs.set_ip(pt->ip);
+            ec->make_current();
     }
 
     ec->help (send_msg<C>);
@@ -489,7 +492,7 @@ void Ec::sys_create_ec()
     Pt *pt = cap_pt.obj()->type() == Kobject::PT ? static_cast<Pt *>(cap_pt.obj()) : nullptr;
 
     Ec *ec = new (*pd) Ec (Pd::current, r->sel(), pd, r->flags() & 1 ? static_cast<void (*)()>(send_msg<ret_user_iret>) : nullptr, r->cpu(), r->evt(), r->utcb(), r->esp(), pt);
-
+    
     if (pd->worker_channels && pd->cell->_workers[r->cpu()]) {
         //core_alloc.reserve(pd->cell, r->cpu());
         trace(TRACE_ERROR, "%s: A worker is already registered for %p at CPU %u", __func__, pd->cell, r->cpu());
@@ -620,8 +623,12 @@ void Ec::sys_create_pt()
     }
 
     Pt *pt = new (*ec->pd) Pt (Pd::current, r->sel(), ec, r->mtd(), r->eip());
+    if (!pt) {
+        trace(TRACE_ERROR, "%s: Failed to alloc PT", __func__);
+        sys_finish<Sys_regs::BAD_CAP>();
+    }
     if (!Space_obj::insert_root (pd->quota, pt)) {
-        trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
+        trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx): node_order=%lu", __func__, r->sel(), pt->node_order);
         Pt::destroy (pt);
         sys_finish<Sys_regs::BAD_CAP>();
     }
@@ -1354,12 +1361,14 @@ void Ec::sys_yield()
 {
     Sys_yield *r = static_cast<Sys_yield *>(current->sys_regs());
     Cell *cell = current->pd->cell;
-    
+    Cell volatile *owner = core_alloc.owner(Cpu::id);
+    Channel *chan = owner ? &owner->_pd->worker_channels[Cpu::id] : nullptr;
+
     if (!cell) {
         trace(TRACE_ERROR, "No cell found on CPU %d", Cpu::id);
         sys_finish<Sys_regs::BAD_CAP>();
     }
-
+    
     if (!current->is_worker) {
         trace(TRACE_ERROR, "Tried to yield non-worker on CPU %d", Cpu::id);
         sys_finish<Sys_regs::BAD_CAP>();
@@ -1368,12 +1377,18 @@ void Ec::sys_yield()
     switch (r->op()) {
         /* If the worker thread shall sleep we release the core */
         case Sys_yield::RETURN_CORE: {
+            if (chan) {
+                chan->delta_enter = rdtsc() - cell->_pd->worker_channels[Cpu::id].delta_enter;
+                chan->delta_block = rdtsc();
+            }
             /* If, however, the core shall be returned to its owner,
             we return it via the core allocator and let it activate the
             owner's corresponding worker. There is no need to release the core, as it would be allocated immediately by its owner anyway. */
-            if (core_alloc.borrowed(cell, Cpu::id)) {
+            if (core_alloc.borrowed(cell, Cpu::id))
+            {
                 core_alloc.return_core(cell, Cpu::id);
-                //trace(0, "Cell %p returned CPU %u, cmap=%lu", cell, Cpu::id, cell->core_map);
+                const_cast<Cell *>(owner)->wake_core(Cpu::id);
+                    //trace(TRACE_CPU, "Cell %p returned CPU %u, cmap=%lu", cell, Cpu::id, cell->core_map);
             }
             break;
         }
@@ -1384,6 +1399,7 @@ void Ec::sys_yield()
         }
 
         case Sys_yield::NO_BLOCK: {
+            
             core_alloc.yield(cell, Cpu::id);
             //trace(0, "Cell %p yielded CPU %d without blocking worker", cell, Cpu::id);
             break;
@@ -1393,6 +1409,7 @@ void Ec::sys_yield()
     /* Put the yielding worker to sleep */
     if (r->op() != Sys_yield::NO_BLOCK) {
         current->cont = Ec::sys_finish<Sys_regs::SUCCESS, true>;
+        Cpu::delta_block[Cpu::id] = rdtsc();
         cell->_worker_sms[Cpu::id]->dn(false, 0, current, true);
     }
     sys_finish<Sys_regs::SUCCESS>();
@@ -1415,6 +1432,8 @@ void Ec::sys_mxinit()
 
     pd->mxinit(r->entry(), channel_hva);
 
+    trace(TRACE_CPU, "Cell has %lu channels", r->entry());
+
     sys_finish<Sys_regs::SUCCESS>();
 }
 
@@ -1428,14 +1447,27 @@ void Ec::sys_alloc_cores()
     if (!cell)
         sys_finish<Sys_regs::BAD_CAP>();
 
+    cell->_pd->worker_channels[Cpu::id].delta_enter = rdtsc() - cell->_pd->worker_channels[Cpu::id].delta_enter;
+
+    unsigned long start_alloc = rdtsc();
     mword cores = core_alloc.alloc(cell, r->count());
-    if (!cores) {
+    unsigned long end_alloc = rdtsc();
+    cell->_pd->worker_channels[Cpu::id].delta_alloc = end_alloc - start_alloc;
+    //trace(TRACE_CPU, "Allocated %d cores", cell->remainder);
+    if (!cell->remainder)
+    {
         //trace(TRACE_ERROR, "No more cores available for %p: cmap = %lx", cell, cell->core_map);
         sys_finish<Sys_regs::BAD_CPU>();
     }
 
+    unsigned long start_activate = rdtsc();
     cell->add_cores(cores);
+    unsigned long end_activate = rdtsc();
+    cell->_pd->worker_channels[Cpu::id].delta_activate = end_activate - start_activate;
+
+    cell->_pd->worker_channels[Cpu::id].delta_return = rdtsc();
     r->set_allocated(cores);
+    r->set_remainder(cell->remainder);
 
     sys_finish<Sys_regs::SUCCESS>();
 }
@@ -1468,6 +1500,8 @@ void Ec::sys_core_allocation()
         r->set_val(my_cell->core_mask[0]);
     else
         r->set_val(__atomic_load_n(&my_cell->core_map, __ATOMIC_SEQ_CST));
+    current->pd->worker_channels[Cpu::id].delta_block = Cpu::delta_block[Cpu::id];
+    current->pd->worker_channels[Cpu::id].delta_return = Cpu::delta_return[Cpu::id];
 
     sys_finish<Sys_regs::SUCCESS>();
 }
