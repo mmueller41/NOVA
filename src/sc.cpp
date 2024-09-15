@@ -50,7 +50,7 @@ Sc::Sc (Pd *own, mword sel, Ec *e, unsigned c, unsigned p, unsigned q) : Kobject
     trace (TRACE_SYSCALL, "SC:%p created (EC:%p CPU:%#x P:%#x Q:%#x)", this, e, c, p, q);
 }
 
-Sc::Sc (Pd *own, Ec *e, unsigned c, Sc *x) : Kobject (SC, static_cast<Space_obj *>(own), 0, 0x1, free_x), ec (e), cpu (c), prio (x->prio+10), budget (x->budget), left (x->left)
+Sc::Sc (Pd *own, Ec *e, unsigned c, Sc *x) : Kobject (SC, static_cast<Space_obj *>(own), 0, 0x1, free_x), ec (e), cpu (c), prio (127), budget (x->budget), left (x->left)
 {
     trace (TRACE_SYSCALL, "SC:%p created (EC:%p CPU:%#x P:%#x Q:%#llx) - xCPU", this, e, c, prio, budget / (Lapic::freq_bus / 1000));
 }
@@ -58,7 +58,7 @@ Sc::Sc (Pd *own, Ec *e, unsigned c, Sc *x) : Kobject (SC, static_cast<Space_obj 
 Sc::Sc (Pd *own, Ec *e, Sc &s) : Kobject (SC, static_cast<Space_obj *>(own), s.node_base, 0x1, free, pre_free), ec (e), cpu (e->cpu), prio (s.prio), disable (s.disable), budget (s.budget), time (s.time), time_m (s.time_m), left (s.left)
 { }
 
-void Sc::ready_enqueue (uint64 , bool inc_ref, bool use_left)
+void Sc::ready_enqueue (uint64 t , bool inc_ref, bool use_left)
 {
     assert (prio < priorities);
     assert (cpu == Cpu::id);
@@ -91,7 +91,7 @@ void Sc::ready_enqueue (uint64 , bool inc_ref, bool use_left)
     if (!left)
         left = budget;
 
-    //tsc = t;
+    tsc = t;
 }
 
 void Sc::ready_dequeue (uint64 t)
