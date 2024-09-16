@@ -78,7 +78,7 @@ void Acpi_rmrr::parse() const
 
 void Acpi_table_dmar::parse() const
 {
-    if (!Cmdline::iommu)
+    if (!Cmdline::iommu_intel)
         return;
 
     for (Acpi_remap const *r = remap; r < reinterpret_cast<Acpi_remap *>(reinterpret_cast<mword>(this) + length); r = reinterpret_cast<Acpi_remap *>(reinterpret_cast<mword>(r) + r->length)) {
@@ -92,7 +92,13 @@ void Acpi_table_dmar::parse() const
         }
     }
 
-    Dmar::enable (flags);
-
     Hip::set_feature (Hip::FEAT_IOMMU);
+}
+
+void Acpi_table_dmar::init() const
+{
+    if (!Cmdline::iommu_intel)
+        return;
+
+    Dmar::enable (flags);
 }

@@ -31,7 +31,7 @@ Iommu::Dte * Iommu::Amd::dtb;
 uint32       Iommu::Amd::dtsize;
 
 Iommu::Amd::Amd (Paddr const base, uint16 const rid, bool valid)
-: List<Iommu::Amd> (list), reg_base ((hwdev_addr -= 3 * PAGE_SIZE) | (base & PAGE_MASK)), efeat_valid(valid)
+: List<Iommu::Amd> (list), reg_base ((hwdev_addr -= 3 * PAGE_SIZE) | (base & PAGE_MASK)), iommu_rid(rid), efeat_valid(valid)
 {
     for (unsigned i = 0; i < 3; i++) {
         Paddr const p = (base & ~0xffful) + 0x1000ul * i;
@@ -41,21 +41,6 @@ Iommu::Amd::Amd (Paddr const base, uint16 const rid, bool valid)
 
     /* XXX */
     Ipt::ord = 9; /* XXX 21 - 12 -> 2M on 64bit */
-
-    bool use_pci = true;
-
-#if 0
-    if (efeat_valid) {
-        uint64 cap_feat = read<uint64>(REG_EFEAT);
-        if (cap_feat & (1ull << 46))
-            Console::print("%p: MSI cap MMIO supported, enabling could be implemented XXX", this);
-        else
-            Console::print("%p: MSI cap not supported XXX", this);
-    }
-#endif
-
-    if (use_pci)
-        Pci::enable_msi(rid);
 }
 
 void Iommu::Amd::fault_handler()
@@ -112,9 +97,26 @@ void Iommu::Amd::fault_handler()
 
 void Iommu::Amd::start()
 {
+    bool use_pci = true;
+
+#if 0
+    if (efeat_valid) {
+        uint64 cap_feat = read<uint64>(REG_EFEAT);
+        if (cap_feat & (1ull << 46))
+            Console::print("%p: MSI cap MMIO supported, enabling could be implemented XXX", this);
+        else
+            Console::print("%p: MSI cap not supported XXX", this);
+    }
+#endif
+
+    if (use_pci)
+        Pci::enable_msi(iommu_rid);
+
     uint64 ctrl = read<uint64>(REG_CTRL);
 
-    event_base = reinterpret_cast<mword>(Buddy::allocator.alloc (EVENT_ORDER, Pd::kern.quota, Buddy::FILL_0));
+    if (!event_base)
+        event_base = reinterpret_cast<mword>(Buddy::allocator.alloc (EVENT_ORDER, Pd::kern.quota, Buddy::FILL_0));
+
     if (event_base) {
         uint64 pevent = Buddy::ptr_to_phys (reinterpret_cast<void *>(event_base));
         uint64 const base = mask(pevent) | ((0b1000ull + EVENT_ORDER) << 56);
@@ -124,7 +126,9 @@ void Iommu::Amd::start()
         ctrl |= 4ULL /* enable */ | 8ULL /* irq on overflow */;
     }
 
-    cmd_base = reinterpret_cast<mword>(Buddy::allocator.alloc (CMD_ORDER, Pd::kern.quota, Buddy::FILL_0));
+    if (!cmd_base)
+        cmd_base = reinterpret_cast<mword>(Buddy::allocator.alloc (CMD_ORDER, Pd::kern.quota, Buddy::FILL_0));
+
     if (cmd_base) {
         uint64 pcmd = Buddy::ptr_to_phys (reinterpret_cast<void *>(cmd_base));
         uint64 const base = mask(pcmd) | ((0b1000ull + CMD_ORDER) << 56);
@@ -134,8 +138,22 @@ void Iommu::Amd::start()
         ctrl |= 1ULL << 12 /* enable */;
     }
 
+    enable_dtb();
+
     ctrl |= 1ULL;
     write<uint64>(REG_CTRL, ctrl);
+}
+
+void Iommu::Amd::enable_dtb()
+{
+    if (!dtb)
+        return;
+
+    uint64 pbase = Buddy::ptr_to_phys (dtb);
+    pbase  = mask(pbase);
+    pbase |= (dtsize / 4096) - 1;
+
+    write(REG_DTB, pbase);
 }
 
 void Iommu::Amd::alloc_dtb(unsigned short const /* order */,
@@ -153,11 +171,7 @@ void Iommu::Amd::alloc_dtb(unsigned short const /* order */,
 
         dtsize = 1u << (order + 12);
 
-        uint64 pbase = Buddy::ptr_to_phys (dtb);
-        pbase  = mask(pbase);
-        pbase |= (dtsize / 4096) - 1;
-
-        write(REG_DTB, pbase);
+        enable_dtb();
     }
 
     for (unsigned rid = rid_s; rid <= rid_e; rid ++) {

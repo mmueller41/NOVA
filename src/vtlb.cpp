@@ -103,7 +103,7 @@ size_t Vtlb::hwalk (mword gpa, mword &hpa, mword &attr, mword &error)
     return size;
 }
 
-Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
+Vtlb::Reason Vtlb::miss (Cpu_regs *regs, mword virt, mword &error)
 {
     mword phys, attr = TLB_U | TLB_W | TLB_P;
     Paddr host;

@@ -23,6 +23,7 @@
 #include "buddy.hpp"
 #include "crd.hpp"
 #include "util.hpp"
+#include "fpu.hpp"
 
 class Cpu_regs;
 
@@ -73,8 +74,8 @@ class Utcb_data
 #endif
                 uint64          qual[2];
                 uint32          ctrl[2];
-                uint64          reserved;
                 mword           cr0, cr2, cr3, cr4;
+                uint64          xcr0, xss;
                 mword           pdpte[4];
 #ifdef __x86_64__
                 mword           cr8, efer;
@@ -89,6 +90,8 @@ class Utcb_data
                 mword           dr7, sysenter_cs, sysenter_rsp, sysenter_rip;
                 Utcb_segment    es, cs, ss, ds, fs, gs, ld, tr, gd, id;
                 uint64          tsc_val, tsc_off, tsc_aux;
+                uint64          exit_value;
+                uint8           fpu[sizeof(Fpu)];
             };
 
             mword mr[(PAGE_SIZE - sizeof (Utcb_head)) / sizeof(mword)];
@@ -137,6 +140,55 @@ class Utcb : public Utcb_head, private Utcb_data
 
         ALWAYS_INLINE
         static inline void destroy(Utcb *obj, Quota &quota) { obj->~Utcb(); Buddy::allocator.free (reinterpret_cast<mword>(obj), quota); }
+
+        template <typename F>
+        void fpu_mr(F const &fn) { fn(&fpu); }
+
+        template <typename R, typename W>
+        void for_each_word (R const &fn_read, W const &fn_write)
+        {
+            mword const write_bit = 29;
+            bool  const extra_inc = (sizeof(mword) == 4);
+            mword const max       = min(ui(), mword(sizeof(mword) * 8 - 1));
+
+            unsigned id_op   = 0;
+            mword    success = 0;
+
+            for (unsigned i = 0; (i + (extra_inc ? 1 : 0)) < max; i++, id_op++)
+            {
+                uint64 const op    = mr[i];
+                bool   const write = !!(op & (1ul << write_bit));
+
+                if (write) {
+                    if (extra_inc) i++;
+
+                    if ((i + (extra_inc ? 2 : 1)) >= max) break;
+
+                    uint64 value = mr[i + 1];
+                    if (extra_inc)
+                        value += uint64(mr[i + 2]) << 32;
+
+                    auto const msr = op & ~(1ul << write_bit);
+
+                    if (fn_write(msr, value))
+                        success |= 1ul << id_op;
+
+                    i += extra_inc ? 2 : 1;
+                } else {
+                    uint64 in_out = op;
+
+                    if (fn_read(in_out)) {
+                        success |= 1ul << id_op;
+
+                        mr[i] = mword(in_out);
+                        if (extra_inc)
+                            mr[i + 1] = mword(in_out >> 32);
+                    }
+                }
+            }
+
+            items = success;
+        }
 };
 
 static_assert (sizeof(Utcb) == 4096, "Unsupported size of Utcb");

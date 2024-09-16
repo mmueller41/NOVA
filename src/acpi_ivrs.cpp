@@ -115,7 +115,7 @@ void Acpi_ivhd::parse(Acpi_ivdb::Type const ivdb, bool const efeat_valid) const
 
 void Acpi_table_ivrs::parse() const
 {
-    if (!Cmdline::iommu)
+    if (!Cmdline::iommu_amd)
         return;
 
     for_each([&](Acpi_ivdb const &r) {
@@ -148,7 +148,13 @@ void Acpi_table_ivrs::parse() const
         return false;
     });
 
-    Iommu::Amd::enable ();
-
     Hip::set_feature (Hip::FEAT_IOMMU);
+}
+
+void Acpi_table_ivrs::init() const
+{
+    if (!Cmdline::iommu_amd)
+        return;
+
+    Iommu::Amd::enable ();
 }

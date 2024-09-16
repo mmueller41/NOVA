@@ -88,14 +88,15 @@ Command-Line Parameters
 The following command-line parameters are supported for the microhypervisor.
 They must be separated by spaces.
 
-- *iommu*	- Enables DMA and interrupt remapping.
+- *iommu_intel*	- Enables DMA and interrupt remapping for Intel.
+- *iommu_amd*	- Enables DMA and interrupt remapping for AMD.
 - *keyb*	- Enables the microhypervisor to drive the keyboard.
 - *serial*	- Enables the microhypervisor to drive the serial console.
 - *spinner*	- Enables event spinners.
 - *logmem*	- Enables the microhypervisor to export kernel messages.
 - *vtlb*	- Forces use of vTLB instead of nested paging (EPT/NPT).
 - *nopcid*	- Disables TLB tags for address spaces.
-- *novga*  	- Disables VGA console.
+- *vga*  	- Enables VGA console.
 - *novpid* 	- Disables TLB tags for virtual machines.
 
 
@@ -109,6 +110,9 @@ Copyright (C) 2009-2011 Udo Steinberg <udo@hypervisor.org>
 Economic rights: Technische Universitaet Dresden (Germany)
 
 Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
+Copyright (C) 2014 Udo Steinberg, FireEye, Inc.
+Copyright (C) 2019-2024 Udo Steinberg, BedRock Systems, Inc.
+Copyright (C) 2012-2024 Alexander Boettcher, Genode Labs GmbH.
 
 NOVA is free software: you can redistribute it and/or modify it
 under the terms of the GNU General Public License version 2 as
@@ -120,8 +124,16 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU General Public License version 2 for more details.
 ```
 
+Credits
+-------
+
+This NOVA version is a fork to fit the requirements of the Genode OS
+framework. It is derived from the upstream version developed by Udo
+Steinberg working for BedRock Systems, Inc. Additionally, this version
+contains adjusted commits of a fork called Hedron developed by
+Cyberus Technology GmbH.
 
 Contact
 -------
 
-Feedback and comments should be sent to udo@hypervisor.org
+Feedback and comments should be sent to alexander.boettcher@genode-labs.com

@@ -55,6 +55,7 @@ class Mtd
             SYSCALL_SWAPGS  = 1UL << 23,
             TPR             = 1UL << 24,
             TSC_AUX         = 1UL << 25,
+            XSAVE           = 1UL << 26,
             FPU             = 1UL << 31,
         };
 

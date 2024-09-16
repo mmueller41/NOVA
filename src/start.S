@@ -102,26 +102,11 @@ __boot_gdt__:
 .endm
 
 /*
- * AP Startup Code
- */
-.code16
-
-__start_ap:             INIT_PAGING
-                        lgdtl   %cs:__gdt_desc - __start_ap
-                        ljmpl   $SEL_KERN_CODE, $__start_ap_high
-
-__gdt_desc:             .word   __boot_gdt__ - __boot_gdt - 1
-                        .long   __boot_gdt
-
-/*
  * BSP Startup Code
  */
 .code32
 
-__start_bsp:            mov     $(__start_bsp - __start_ap), %ecx
-                        mov     $__start_ap, %esi
-                        mov     $AP_BOOT_PADDR, %edi
-                        rep     movsb
+__start_bsp:
 #ifdef __x86_64__
                         mov     $(LVL3L + 0x27), %ecx
                         mov     %ecx, LVL4  + SIZE * (LOAD_ADDR >> (3 * PTE_BPL + PAGE_BITS) & ((1 << PTE_BPL) - 1))
@@ -196,3 +181,20 @@ __start_all:
                         /* switch to stack backed physically different per CPU */
                         mov     $(CPU_LOCAL_STCK + PAGE_SIZE), %REG(sp)
                         jmp     bootstrap
+
+/*
+ * AP Startup Code
+ */
+.code16
+
+.globl __start_ap
+.globl __start_ap_end
+
+__start_ap:             INIT_PAGING
+                        lgdtl   %cs:__gdt_desc - __start_ap
+                        ljmpl   $SEL_KERN_CODE, $__start_ap_high
+
+__gdt_desc:             .word   __boot_gdt__ - __boot_gdt - 1
+                        .long   __boot_gdt
+__start_ap_end:
+

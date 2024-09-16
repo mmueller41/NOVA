@@ -219,9 +219,9 @@ void Hip::add_cpu()
     cpu->package  = Cpu::package[Cpu::id];
     cpu->core     = Cpu::core[Cpu::id];
     cpu->thread   = Cpu::thread[Cpu::id];
-    cpu->flags    = 1;
-    cpu->vendor = static_cast<uint8>(Cpu::vendor);
-    cpu->family = Cpu::family[Cpu::id];
+    cpu->flags    = 1u | ((Cpu::core_type[Cpu::id] == Cpu::INTEL_CORE) ? 2u :
+                          (Cpu::core_type[Cpu::id] == Cpu::INTEL_ATOM) ? 4u : 0u);
+    cpu->family   = Cpu::family[Cpu::id];
     cpu->model    = Cpu::model[Cpu::id];
     cpu->stepping = Cpu::stepping[Cpu::id] & 0xf;
     cpu->platform = Cpu::platform[Cpu::id] & 0x7;

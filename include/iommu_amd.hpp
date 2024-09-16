@@ -84,6 +84,7 @@ class Iommu::Amd : public Iommu::Interface, public List<Amd>
 
         Spinlock          lock { };
 
+        uint16 const      iommu_rid;
         bool const        efeat_valid;
 
         /* start - one large area as long as we don't support segmentation */
@@ -156,6 +157,8 @@ class Iommu::Amd : public Iommu::Interface, public List<Amd>
 
             return !enabled;
         }
+
+        void enable_dtb();
 
         void start ();
 

@@ -91,6 +91,9 @@ void Ec::vmx_extint()
 {
     unsigned vector = Vmcs::read (Vmcs::EXI_INTR_INFO) & 0xff;
 
+    /* Set a default value in case there is an asynchronous recall. */
+    current->regs.dst_portal = VM_EXIT_RECALL;
+
     if (vector >= VEC_IPI)
         Lapic::ipi_vector (vector);
     else if (vector >= VEC_MSI)
@@ -193,6 +196,8 @@ void Ec::vmx_cr()
 
 void Ec::handle_vmx()
 {
+    Fpu::State_xsv::make_current (current->regs.gst_xsv, Fpu::hst_xsv);    // Restore XSV host state
+
     Cpu::hazard = (Cpu::hazard | HZD_DS_ES | HZD_TR) & ~HZD_FPU;
 
     mword reason = Vmcs::read (Vmcs::EXI_REASON) & 0xff;

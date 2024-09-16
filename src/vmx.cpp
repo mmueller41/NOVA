@@ -50,7 +50,7 @@ Queue<Vmcs_state>   Vmcs_state::queue;
 INIT_PRIORITY (PRIO_SLAB)
 Slab_cache Vmcs_state::cache (sizeof (Vmcs_state), 8);
 
-Vmcs::Vmcs (mword esp, mword bmp, mword cr3, uint64 eptp) : rev (basic.revision)
+Vmcs::Vmcs (Quota &quota, mword esp, mword bmp, mword cr3, uint64 eptp) : rev (basic.revision)
 {
     make_current();
 
@@ -103,6 +103,35 @@ Vmcs::Vmcs (mword esp, mword bmp, mword cr3, uint64 eptp) : rev (basic.revision)
 
     write (HOST_RSP, esp);
     write (HOST_RIP, reinterpret_cast<mword>(&entry_vmx));
+
+    /* allocate and register the host MSR area */
+    mword host_msr_area_phys = Buddy::ptr_to_phys(new (quota) Msr_area);
+    write (EXI_MSR_LD_ADDR, host_msr_area_phys);
+    write (EXI_MSR_LD_CNT, Msr_area::MSR_COUNT);
+
+    /* allocate and register the guest MSR area */
+    mword guest_msr_area_phys = Buddy::ptr_to_phys(new (quota) Msr_area);
+    write (ENT_MSR_LD_ADDR, guest_msr_area_phys);
+    write (ENT_MSR_LD_CNT, Msr_area::MSR_COUNT);
+    write (EXI_MSR_ST_ADDR, guest_msr_area_phys);
+    write (EXI_MSR_ST_CNT, Msr_area::MSR_COUNT);
+
+    /* allocate and register the virtual APIC page */
+    mword virtual_apic_page_phys = Buddy::ptr_to_phys(new (quota) Virtual_apic_page);
+    write (APIC_VIRT_ADDR, virtual_apic_page_phys);
+
+    /* allocate and register the guest MSR permission bitmap */
+    if (Vmcs::use_msr_bitmap()) {
+        auto       &msr_bitmap      = *new (quota) Msr_bitmap;
+        auto const  msr_bitmap_phys = Buddy::ptr_to_phys(&msr_bitmap);
+
+        /* note: also adjust Msr_area+usage when more Msr exits are disabled */
+        msr_bitmap.disable_msr_exit(Msr::Register::IA32_FS_BASE);
+        msr_bitmap.disable_msr_exit(Msr::Register::IA32_GS_BASE);
+        msr_bitmap.disable_msr_exit(Msr::Register::IA32_KERNEL_GS_BASE);
+
+        write (MSR_BITMAP, msr_bitmap_phys);
+    }
 }
 
 void Vmcs::init()
@@ -135,6 +164,10 @@ void Vmcs::init()
     fix_cr0_clr |= Cpu::CR0_CD | Cpu::CR0_NW;
 
     ctrl_cpu[0].set |= CPU_HLT | CPU_IO | CPU_IO_BITMAP | CPU_SECONDARY;
+
+    if (Vmcs::use_msr_bitmap())
+        ctrl_cpu[0].set |= CPU_MSR_BITMAP;
+
     ctrl_cpu[1].set |= CPU_VPID | CPU_URG;
 
     if (Cmdline::vtlb || !ept_vpid.invept)
@@ -151,4 +184,38 @@ void Vmcs::init()
     root->vmxon();
 
     trace (TRACE_VMX, "VMCS:%#010lx REV:%#x EPT:%d URG:%d VNMI:%d VPID:%d", Buddy::ptr_to_phys (root), basic.revision, has_ept(), has_urg(), has_vnmi(), has_vpid());
+}
+
+void Vmcs_state::destroy(Vmcs_state * const remove, Quota &quota)
+{
+    if (!remove)
+        return;
+
+    remove->make_current();
+
+    auto const host_msr_area_phys     = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
+    auto const guest_msr_area_phys    = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
+    auto const virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
+    auto const msr_bitmap_phys        = Vmcs::read(Vmcs::MSR_BITMAP);
+
+    remove->clear();
+
+    auto * host_msr_area = reinterpret_cast<Msr_area *>(Buddy::phys_to_ptr(host_msr_area_phys));
+    Msr_area::destroy(host_msr_area, quota);
+
+    auto * guest_msr_area = reinterpret_cast<Msr_area *>(Buddy::phys_to_ptr(guest_msr_area_phys));
+    Msr_area::destroy(guest_msr_area, quota);
+
+    auto * virtual_apic_page = reinterpret_cast<Virtual_apic_page *>(Buddy::phys_to_ptr(virtual_apic_page_phys));
+    Virtual_apic_page::destroy(virtual_apic_page, quota);
+
+    if (Vmcs::use_msr_bitmap() && msr_bitmap_phys) {
+        auto * msr_bitmap = reinterpret_cast<Msr_bitmap *>(Buddy::phys_to_ptr(static_cast<Paddr>(msr_bitmap_phys)));
+        Msr_bitmap::destroy(msr_bitmap, quota);
+    }
+
+    Vmcs::destroy(&remove->vmcs, quota);
+
+    remove->~Vmcs_state();
+    cache.free (remove, quota);
 }

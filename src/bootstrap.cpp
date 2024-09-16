@@ -21,6 +21,7 @@
 
 #include "compiler.hpp"
 #include "ec.hpp"
+#include "sm.hpp"
 #include "hip.hpp"
 #include "msr.hpp"
 #include "console_serial.hpp"
@@ -44,15 +45,18 @@ void bootstrap()
         });
     }
 
-    Msr::write<uint64>(Msr::IA32_TSC, Acpi::resume_time);
-
     Cpu::init(resumed);
 
     if (resumed) {
-        Timeout::sync();
-
         // Barrier: wait for all ECs to arrive here
         for (Atomic::add (barrier, 1UL); barrier != Cpu::online; pause()) ;
+
+        Msr::write<uint64>(Msr::IA32_TSC, Acpi::resume_time);
+
+        Timeout::sync();
+
+        if (Cpu::bsp)
+            Lapic::ap_code_cleanup();
 
         Sc::schedule();
     }
@@ -68,12 +72,16 @@ void bootstrap()
     // Barrier: wait for all ECs to arrive here
     for (Atomic::add (barrier, 1UL); barrier != Cpu::online; pause()) ;
 
+    Msr::write<uint64>(Msr::IA32_TSC, 0);
+
     // Create root task
     if (Cpu::bsp) {
         Hip::add_check();
         Ec *root_ec = new (Pd::root) Ec (&Pd::root, EC_ROOTTASK, &Pd::root, Ec::root_invoke, Cpu::id, 0, USER_ADDR - 2 * PAGE_SIZE, 0, nullptr);
         Sc *root_sc = new (Pd::root) Sc (&Pd::root, SC_ROOTTASK, root_ec, Cpu::id, Sc::default_prio, Sc::default_quantum);
         root_sc->remote_enqueue();
+
+        Lapic::ap_code_cleanup();
     }
 
     Sc::schedule();

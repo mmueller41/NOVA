@@ -24,31 +24,35 @@
 #include "string.hpp"
 #include "pd.hpp"
 
-bool Cmdline::iommu;
+bool Cmdline::iommu_amd;
+bool Cmdline::iommu_intel;
 bool Cmdline::keyb;
 bool Cmdline::serial;
 bool Cmdline::spinner;
 bool Cmdline::vtlb;
 bool Cmdline::nodl;
 bool Cmdline::nopcid;
-bool Cmdline::novga;
+bool Cmdline::vga;
 bool Cmdline::novpid;
 bool Cmdline::logmem;
 bool Cmdline::fpu_lazy;
+bool Cmdline::hlt;
 
 struct Cmdline::param_map Cmdline::map[] INITDATA =
 {
-    { "iommu",      &Cmdline::iommu     },
-    { "keyb",       &Cmdline::keyb      },
-    { "serial",     &Cmdline::serial    },
-    { "spinner",    &Cmdline::spinner   },
-    { "vtlb",       &Cmdline::vtlb      },
-    { "nodl",       &Cmdline::nodl      },
-    { "nopcid",     &Cmdline::nopcid    },
-    { "novga",      &Cmdline::novga     },
-    { "novpid",     &Cmdline::novpid    },
-    { "logmem",     &Cmdline::logmem    },
-    { "fpu_lazy",   &Cmdline::fpu_lazy  },
+    { "iommu_amd",   &Cmdline::iommu_amd   },
+    { "iommu_intel", &Cmdline::iommu_intel },
+    { "keyb",        &Cmdline::keyb        },
+    { "serial",      &Cmdline::serial      },
+    { "spinner",     &Cmdline::spinner     },
+    { "vtlb",        &Cmdline::vtlb        },
+    { "nodl",        &Cmdline::nodl        },
+    { "nopcid",      &Cmdline::nopcid      },
+    { "vga",         &Cmdline::vga         },
+    { "novpid",      &Cmdline::novpid      },
+    { "logmem",      &Cmdline::logmem      },
+    { "fpu_lazy",    &Cmdline::fpu_lazy    },
+    { "hlt",         &Cmdline::hlt         },
 };
 
 char const *Cmdline::get_arg (char const **line, unsigned &len)

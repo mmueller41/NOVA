@@ -6,7 +6,7 @@
  *
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
  * Copyright (C) 2014 Udo Steinberg, FireEye, Inc.
- * Copyright (C) 2012-2020 Alexander Boettcher, Genode Labs GmbH
+ * Copyright (C) 2012-2023 Alexander Boettcher, Genode Labs GmbH
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -204,9 +204,7 @@ void Ec::recv_kern()
         fpu = current->utcb->load_svm (&ec->regs);
 
     if (EXPECT_FALSE (fpu)) {
-        ec->transfer_fpu (current);
-        if (!Cmdline::fpu_lazy)
-           Cpu::hazard &= ~HZD_FPU;
+        current->utcb->fpu_mr([&](void *data){ ec->export_fpu_data(data); });
     }
     ec->transfer_pmcs(current);
 
@@ -376,8 +374,9 @@ void Ec::sys_reply()
         else if (ec->cont == ret_user_vmrun)
             fpu = src->save_svm (&ec->regs);
 
-        if (EXPECT_FALSE (fpu))
-            current->transfer_fpu (ec);
+        if (EXPECT_FALSE (fpu)) {
+            src->fpu_mr([&](void *data){ ec->import_fpu_data(data); });
+        }
 
         current->transfer_pmcs(ec);
     }
@@ -831,7 +830,7 @@ void Ec::sys_ec_ctrl()
                 }
             }
 
-            if (!(r->state() && current->utcb))
+            if (!(r->state() && !current->vcpu()))
                 break;
 
             Cpu_regs regs(ec->regs);
@@ -893,7 +892,7 @@ void Ec::sys_ec_ctrl()
             if (EXPECT_FALSE(ec->cpu != current->cpu))
                 sys_finish<Sys_regs::BAD_CPU>();
 
-            if (EXPECT_FALSE(!ec->utcb || ec->blocked() || ec->partner || ec->pd != Ec::current->pd || (r->cnt() != ec->utcb->tls)))
+            if (EXPECT_FALSE(ec->vcpu() || ec->blocked() || ec->partner || ec->pd != Ec::current->pd || !ec->utcb || (r->cnt() != ec->utcb->tls)))
                 sys_finish<Sys_regs::BAD_PAR>();
 
             current->cont = sys_finish<Sys_regs::SUCCESS>;
@@ -1016,6 +1015,95 @@ void Ec::sys_ec_ctrl()
             mword val = pmc->read();
             
             r->set_time(val);
+            break;
+        }
+
+        case 11: /* get vcpu state */
+        {
+            Capability cap = Space_obj::lookup (r->ec());
+            if (EXPECT_FALSE (cap.obj()->type() != Kobject::EC || !(cap.prm() & 1UL << 0))) {
+                trace (TRACE_ERROR, "%s: Bad EC CAP (%#lx)", __func__, r->ec());
+                sys_finish<Sys_regs::BAD_CAP>();
+            }
+            Ec *ec = static_cast<Ec *>(cap.obj());
+
+            if (EXPECT_FALSE (current->cpu != ec->cpu)) {
+                trace (TRACE_ERROR, "%s: Called from remote CPU", __func__);
+                sys_finish<Sys_regs::BAD_CPU>();
+            }
+
+            if (!(ec->regs.hazard() & HZD_RECALL))
+                ec->regs.set_hazard (HZD_RECALL);
+
+            Cpu_regs regs(ec->regs);
+            regs.mtd = r->mtd_value();
+
+            bool fpu = false;
+
+            if (ec->vcpu() && (Hip::feature() & Hip::FEAT_SVM))
+                fpu = current->utcb->load_svm (&regs);
+            else if (ec->vcpu() && (Hip::feature() & Hip::FEAT_VMX))
+                fpu = current->utcb->load_vmx (&regs);
+            else {
+                trace (TRACE_ERROR, "%s: Bad EC CAP (%#lx)", __func__, r->ec());
+                sys_finish<Sys_regs::BAD_CAP>();
+            }
+
+            if (EXPECT_FALSE (fpu)) {
+                current->utcb->fpu_mr([&](void *data){ ec->export_fpu_data(data); });
+            }
+
+            sys_finish<Sys_regs::SUCCESS>();
+        }
+        case 12: /* set vcpu state */
+        {
+            Capability cap = Space_obj::lookup (r->ec());
+            if (EXPECT_FALSE (cap.obj()->type() != Kobject::EC || !(cap.prm() & 1UL << 0))) {
+                trace (TRACE_ERROR, "%s: Bad EC CAP (%#lx)", __func__, r->ec());
+                sys_finish<Sys_regs::BAD_CAP>();
+            }
+
+            Ec *ec = static_cast<Ec *>(cap.obj());
+
+            if (EXPECT_FALSE (current->cpu != ec->cpu)) {
+                trace (TRACE_ERROR, "%s: Called from remote CPU", __func__);
+                sys_finish<Sys_regs::BAD_CPU>();
+            }
+
+            bool fpu = false;
+            Utcb *src = current->utcb;
+
+            if (ec->vcpu() && (Hip::feature() & Hip::FEAT_SVM))
+                fpu = src->save_svm (&ec->regs);
+            else if (ec->vcpu() && (Hip::feature() & Hip::FEAT_VMX))
+                fpu = src->save_vmx (&ec->regs);
+            else {
+                trace (TRACE_ERROR, "%s: Bad EC CAP (%#lx)", __func__, r->ec());
+                sys_finish<Sys_regs::BAD_CAP>();
+            }
+
+            if (EXPECT_FALSE (fpu)) {
+                src->fpu_mr([&](void *data){ ec->import_fpu_data(data); });
+            }
+
+            if (!r->recall() && (ec->regs.hazard() & HZD_RECALL))
+                ec->regs.clr_hazard(HZD_RECALL);
+
+            ec->regs.dst_portal = VM_EXIT_RECALL;
+
+            sys_finish<Sys_regs::SUCCESS>();
+        }
+
+        case 13: /* selective & guarded MSR access */
+        {
+            if (!current->utcb)
+                sys_finish<Sys_regs::BAD_PAR>();
+
+            Capability cap = Space_obj::lookup (r->ec());
+            if (!Msr::msr_cap || cap.obj() != Msr::msr_cap)
+                sys_finish<Sys_regs::BAD_CAP>();
+
+            Msr::user_access(*(current->utcb));
             break;
         }
 
@@ -1309,19 +1397,46 @@ void Ec::sys_xcpu_call()
 
     enum { UNUSED = 0, CNT = 0 };
 
-    current->xcpu_sm = new (*Pd::current) Sm (Pd::current, UNUSED, CNT);
+    if (!current->sc_xcpu) {
+        current->xcpu_sm = new (*Pd::current) Sm (Pd::current, UNUSED, CNT);
+        current->ec_xcpu = new (*Pd::current) Ec (Pd::current, Pd::current, Ec::sys_call, ec->cpu, current);
 
-    Ec *xcpu_ec = new (*Pd::current) Ec (Pd::current, Pd::current, Ec::sys_call, ec->cpu, current);
-    Sc *xcpu_sc = new (*xcpu_ec->pd) Sc (Pd::current, xcpu_ec, xcpu_ec->cpu, Sc::current);
-    /*unsigned long end = rdtsc();
-    delays[Cpu::id] += (end - start);
+        if (!current->ec_xcpu->rcap) {
+            trace (0, "xCPU construction failure");
 
-    if (__atomic_load_n(&count[Cpu::id], __ATOMIC_SEQ_CST)%1000 == 0) {
-        trace(0, "{\"tas-delay\": %lu, \"lock\": \"Ec::sys_xcpu_call\", \"cores\": %u},", delays[Cpu::id]/2, rpc_bench_cores);
-        delays[Cpu::id] = 0;
-    }*/
+            Ec::destroy(current->ec_xcpu, *Pd::current);
+            Sm::destroy(current->xcpu_sm, *Pd::current);
 
-    xcpu_sc->remote_enqueue();
+            current->ec_xcpu = nullptr;
+            current->xcpu_sm = nullptr;
+
+            sys_finish<Sys_regs::BAD_PAR>();
+        }
+
+        current->sc_xcpu = new (*Pd::current) Sc (Pd::current, current->ec_xcpu, current->ec_xcpu->cpu, Sc::current);
+
+        current->sc_xcpu->add_ref();
+
+    } else {
+        bool sc_unused = Lapic::pause_loop_until(1, [&] {
+            return !current->sc_xcpu->last_ref(); });
+
+        if (!sc_unused) {
+            trace (0, "xCPU EC still in use");
+            sys_finish<Sys_regs::COM_TIM>();
+        }
+
+        current->xcpu_sm = new (*Pd::current) Sm (Pd::current, UNUSED, CNT);
+        current->ec_xcpu->xcpu_clone(*current, ec->cpu);
+        current->sc_xcpu->xcpu_clone(*Sc::current, ec->cpu);
+
+        current->sc_xcpu->add_ref();
+    }
+
+    current->cont = ret_xcpu_reply;
+
+    current->sc_xcpu->remote_enqueue();
+
     current->xcpu_sm->dn (false, 0);
     
 
@@ -1330,16 +1445,10 @@ void Ec::sys_xcpu_call()
 
 void Ec::ret_xcpu_reply()
 {
-    /*extern unsigned rpc_bench_cores;
-    static unsigned count[NUM_CPU];
-    static unsigned long delays[NUM_CPU];
-    __atomic_fetch_add(&count[Cpu::id], 1, __ATOMIC_SEQ_CST);
-
-    unsigned long start = rdtsc();*/
-    assert (current->xcpu_sm);
-
-    Sm::destroy(current->xcpu_sm, *Pd::current);
-    current->xcpu_sm = nullptr;
+    if (current->xcpu_sm) {
+        Rcu::call(current->xcpu_sm);
+        current->xcpu_sm = nullptr;
+    }
 
     if (current->regs.status() != Sys_regs::SUCCESS) {
         current->cont = sys_call;

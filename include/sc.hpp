@@ -32,10 +32,10 @@ class alignas(64) Sc : public Kobject, public Refcount
 
     public:
         Refptr<Ec> const ec;
-        unsigned const cpu;
-        uint16   const prio;
+        unsigned       cpu;
+        uint16         prio;
         uint16         disable { 0 };
-        uint64   const budget;
+        uint64         budget;
         uint64         time    { 0 };
         uint64         time_m  { 0 };
 
@@ -51,50 +51,26 @@ class alignas(64) Sc : public Kobject, public Refcount
             Sc *        queue { nullptr };
         } rq CPULOCAL;
 
-        static Sc *list[priorities] CPULOCAL;
-
-        static unsigned prio_top CPULOCAL;
+        static Sc *     list[priorities] CPULOCAL;
+        static unsigned prio_top         CPULOCAL;
 
         void ready_enqueue (uint64, bool, bool = true);
-
         void ready_dequeue (uint64);
 
-        static void free (Rcu_elem * a) {
-            Sc * s = static_cast<Sc *>(a);
-              
-            if (s->del_ref()) {
-                if (s->time > s->time_m) {
-                    assert(s->cpu < sizeof(killed_time) / sizeof(killed_time[0]));
-                    Atomic::add(killed_time[s->cpu], s->time - s->time_m);
-                }
+        static void free      (Rcu_elem *);
+        static void free_xcpu (Rcu_elem *);
+        static void pre_free  (Rcu_elem *);
+        static bool remove    (Sc *);
 
-                assert(Sc::current != s);
-                delete s;
-            }
-        }
-
-        static void free_x (Rcu_elem * a) {
-            Sc * s = static_cast<Sc *>(a);
-
-            bool r = s->del_ref();
-            assert (r);
-            assert(Sc::current != s);
-            assert(s->cpu < sizeof(cross_time) / sizeof(cross_time[0]));
-
-            Atomic::add(cross_time[s->cpu], s->time);
-
-            delete s;
-        }
-
-        static void pre_free(Rcu_elem *);
-
-        Sc(const Sc&);
-        Sc &operator = (Sc const &);
+        Sc              (Sc const &);
+        Sc & operator = (Sc const &);
 
     public:
+
         static Sc *     current     CPULOCAL_HOT;
         static unsigned ctr_link    CPULOCAL;
         static unsigned ctr_loop    CPULOCAL;
+        static uint64   long_loop   CPULOCAL;
         static uint64   cross_time[NUM_CPU];
         static uint64   killed_time[NUM_CPU];
 
@@ -127,6 +103,18 @@ class alignas(64) Sc : public Kobject, public Refcount
 
         ALWAYS_INLINE
         void inline measured() { time_m = time; }
+
+        void xcpu_clone(Sc const & sc, uint16 const tcpu)
+        {
+            prio    = sc.prio;
+            budget  = sc.budget;
+            left    = sc.left;
+            disable = false;
+            cpu     = tcpu;
+            time    = 0;
+            time_m  = 0;
+            tsc     = 0;
+        }
 
         ALWAYS_INLINE
         static void inline setup_rrq_mon(unsigned cpu) {

@@ -6,7 +6,7 @@
  *
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
  * Copyright (C) 2014 Udo Steinberg, FireEye, Inc.
- * Copyright (C) 2012-2020 Alexander Boettcher, Genode Labs GmbH.
+ * Copyright (C) 2012-2023 Alexander Boettcher, Genode Labs GmbH.
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -31,6 +31,7 @@
 #include "vtlb.hpp"
 #include "sm.hpp"
 #include "pt.hpp"
+#include "cpu.hpp"
 #include "core_allocator.hpp"
 #include "cell.hpp"
 #include "sc.hpp"
@@ -41,17 +42,16 @@ Sm *Ec::auth_suspend;
 uint64 Ec::killed_time[NUM_CPU];
 
 // Constructors
-Ec::Ec (Pd *own, void (*f)(), unsigned c) : Kobject (EC, static_cast<Space_obj *>(own)), cont (f), pd (own), partner (nullptr), prev (nullptr), next (nullptr), fpu (nullptr), cpu (static_cast<uint16>(c)), glb (true), evt (0), timeout (this), user_utcb (0), xcpu_sm (nullptr), pt_oom(nullptr)
+Ec::Ec (Pd *own, void (*f)(), unsigned c) : Kobject (EC, static_cast<Space_obj *>(own)), cont (f), pd (own), cpu (static_cast<uint16>(c)), glb (true), evt (0), timeout (this)
 {
     trace (TRACE_SYSCALL, "EC:%p created (PD:%p Kernel)", this, own);
 
     regs.vtlb = nullptr;
     regs.vmcs_state = nullptr;
     regs.vmcb_state = nullptr;
-
 }
 
-Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, mword s, Pt *oom) : Kobject (EC, static_cast<Space_obj *>(own), sel, 0xd, free, pre_free), cont (f), pd (p), partner (nullptr), prev (nullptr), next (nullptr), fpu (nullptr), sp(s), cpu (static_cast<uint16>(c)), glb (!!f), evt (e), timeout (this), user_utcb (u), xcpu_sm (nullptr), pt_oom (oom)
+Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, mword s, Pt *oom) : Kobject (EC, static_cast<Space_obj *>(own), sel, 0xd, free, pre_free), cont (f), pd (p), cpu (static_cast<uint16>(c)), glb (!!f), evt (e), timeout (this), user_utcb (u), xcpu_sm (nullptr), pt_oom (oom)
 {
     // Make sure we have a PTAB for this CPU in the PD
     pd->Space_mem::init (pd->quota, c);
@@ -89,8 +89,6 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
 
     } else {
 
-        utcb = nullptr;
-
         regs.dst_portal = VM_EXIT_STARTUP;
         regs.vtlb = new (pd->quota) Vtlb;
         regs.fpu_on = !Cmdline::fpu_lazy;
@@ -98,33 +96,20 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
         if (Hip::feature() & Hip::FEAT_VMX) {
             mword host_cr3 = pd->loc[c].root(pd->quota) | (Cpu::feature (Cpu::FEAT_PCID) ? pd->did : 0);
 
-            auto vmcs = new (pd->quota) Vmcs (reinterpret_cast<mword>(sys_regs() + 1),
+            auto vmcs = new (pd->quota) Vmcs (pd->quota,
+                                              reinterpret_cast<mword>(sys_regs() + 1),
                                               pd->Space_pio::walk(pd->quota),
                                               host_cr3,
                                               pd->ept.root(pd->quota));
 
-            regs.vmcs_state = new (pd->quota) Vmcs_state(*vmcs);
+            regs.vmcs_state = new (pd->quota) Vmcs_state(*vmcs, cpu);
+
             regs.vmcs_state->make_current();
 
             regs.nst_ctrl<Vmcs>();
 
-            /* allocate and register the host MSR area */
-            mword host_msr_area_phys = Buddy::ptr_to_phys(new (pd->quota) Msr_area);
-            Vmcs::write(Vmcs::EXI_MSR_LD_ADDR, host_msr_area_phys);
-            Vmcs::write(Vmcs::EXI_MSR_LD_CNT, Msr_area::MSR_COUNT);
-
-            /* allocate and register the guest MSR area */
-            mword guest_msr_area_phys = Buddy::ptr_to_phys(new (pd->quota) Msr_area);
-            Vmcs::write(Vmcs::ENT_MSR_LD_ADDR, guest_msr_area_phys);
-            Vmcs::write(Vmcs::ENT_MSR_LD_CNT, Msr_area::MSR_COUNT);
-            Vmcs::write(Vmcs::EXI_MSR_ST_ADDR, guest_msr_area_phys);
-            Vmcs::write(Vmcs::EXI_MSR_ST_CNT, Msr_area::MSR_COUNT);
-
-            /* allocate and register the virtual APIC page */
-            mword virtual_apic_page_phys = Buddy::ptr_to_phys(new (pd->quota) Virtual_apic_page);
-            Vmcs::write(Vmcs::APIC_VIRT_ADDR, virtual_apic_page_phys);
-
             regs.vmcs_state->clear();
+
             cont = send_msg<ret_user_vmresume>;
             trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs_state, regs.vtlb);
 
@@ -135,17 +120,22 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
             auto vmcb = new (pd->quota) Vmcb (pd->quota, pd->Space_pio::walk(pd->quota),
                                               pd->npt.root(pd->quota), unsigned(pd->asid));
 
-            regs.vmcb_state = new (pd->quota) Vmcb_state(*vmcb);
-            regs.REG(ax) = Buddy::ptr_to_phys (vmcb);
+            regs.vmcb_state = new (pd->quota) Vmcb_state(*vmcb, cpu);
 
+            regs.vmcb_state->make_current();
+
+            regs.REG(ax) = Buddy::ptr_to_phys (vmcb);
             regs.nst_ctrl<Vmcb>();
+
+            regs.vmcb_state->clear();
+
             cont = send_msg<ret_user_vmrun>;
             trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCB:%p VTLB:%p)", this, p, regs.vmcb_state, regs.vtlb);
         }
     }
 }
 
-Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, static_cast<Space_obj *>(own), 0, 0xd, free, pre_free), cont (f), regs (clone->regs), rcap (clone), utcb (clone->utcb), pd (p), partner (nullptr), prev (nullptr), next (nullptr), fpu (clone->fpu), cpu (static_cast<uint16>(c)), glb (!!f), evt (clone->evt), timeout (this), user_utcb (0), xcpu_sm (clone->xcpu_sm), pt_oom(clone->pt_oom)
+Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, static_cast<Space_obj *>(own), 0, 0xd, free, pre_free), cont (f), regs (clone->regs), rcap (clone), utcb (clone->utcb), pd (p), fpu (clone->fpu), cpu (static_cast<uint16>(c)), glb (!!f), evt (clone->evt), timeout (this), user_utcb (0), xcpu_sm (clone->xcpu_sm), pt_oom(clone->pt_oom)
 {
     // Make sure we have a PTAB for this CPU in the PD
     pd->Space_mem::init (pd->quota, c);
@@ -154,11 +144,14 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, stati
     regs.vmcs_state = nullptr;
     regs.vmcb_state = nullptr;
 
+    if (rcap && !rcap->add_ref())
+        rcap = nullptr;
+
     if (pt_oom && !pt_oom->add_ref())
         pt_oom = nullptr;
 }
 
-Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, Pt *pt) : Kobject (EC, static_cast<Space_obj *>(own), clone->node_base, 0xd, free, pre_free), cont (f), regs (clone->regs), rcap (nullptr), utcb (clone->utcb), pd (p), partner (nullptr), prev (nullptr), next (nullptr), fpu (clone->fpu), cpu (static_cast<uint16>(c)), glb (!!f), evt (clone->evt), timeout (this), user_utcb (clone->user_utcb), xcpu_sm (clone->xcpu_sm), pt_oom(pt)
+Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, Pt *pt) : Kobject (EC, static_cast<Space_obj *>(own), clone->node_base, 0xd, free, pre_free), cont (f), regs (clone->regs), utcb (clone->utcb), pd (p), fpu (clone->fpu), cpu (static_cast<uint16>(c)), glb (!!f), evt (clone->evt), timeout (this), user_utcb (clone->user_utcb), xcpu_sm (clone->xcpu_sm), pt_oom(pt)
 {
     if (EXPECT_FALSE((fpowner == clone) && clone->fpu && Cmdline::fpu_lazy)) {
         Fpu::enable();
@@ -181,7 +174,6 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, Pt *pt) : Kobject (E
         pt_oom = nullptr;
 }
 
-//De-constructor
 Ec::~Ec()
 {
     if (is_worker && cell()) {
@@ -189,11 +181,19 @@ Ec::~Ec()
         cell()->remove_worker(cpu);
     }
     if (xcpu_sm) {
-        Sm::destroy(xcpu_sm, *pd);
-        xcpu_sm = nullptr;
+        /* should never happen, Ec have to pass xcpu_return */
+        trace (0, "invalid state, still have xcpu_sm");
+
+        xcpu_revert();
     }
 
     pre_free(this);
+
+    if (partner)
+        trace (0, "invalid state, still have partner");
+
+    if (rcap && rcap->del_rcu())
+        Rcu::call(rcap);
 
     if (pt_oom && pt_oom->del_ref())
         Pt::destroy(pt_oom);
@@ -210,35 +210,21 @@ Ec::~Ec()
     }
 
     /* skip xCPU EC */
-    if (!regs.vtlb)
+    if (!vcpu())
         return;
 
     /* vCPU cleanup */
     Vtlb::destroy(regs.vtlb, pd->quota);
 
-    if (Hip::feature() & Hip::FEAT_VMX) {
-
-        regs.vmcs_state->make_current();
-
-        mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
-        Msr_area *host_msr_area = reinterpret_cast<Msr_area*>(Buddy::phys_to_ptr(host_msr_area_phys));
-        Msr_area::destroy(host_msr_area, pd->quota);
-
-        mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
-        Msr_area *guest_msr_area = reinterpret_cast<Msr_area*>(Buddy::phys_to_ptr(guest_msr_area_phys));
-        Msr_area::destroy(guest_msr_area, pd->quota);
-
-        mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
-        Virtual_apic_page *virtual_apic_page =
-            reinterpret_cast<Virtual_apic_page*>(Buddy::phys_to_ptr(virtual_apic_page_phys));
-        Virtual_apic_page::destroy(virtual_apic_page, pd->quota);
-
+    if ((Hip::feature() & Hip::FEAT_VMX) && regs.vmcs_state) {
         regs.vmcs_state->clear();
-
         Vmcs_state::destroy(regs.vmcs_state, pd->quota);
-
-    } else if (Hip::feature() & Hip::FEAT_SVM)
+    }
+    else
+    if ((Hip::feature() & Hip::FEAT_SVM) && regs.vmcb_state) {
+        regs.vmcb_state->clear();
         Vmcb_state::destroy(regs.vmcb_state, pd->quota);
+    }
 }
 
 void Ec::handle_hazard (mword hzd, void (*func)())
@@ -290,6 +276,7 @@ void Ec::handle_hazard (mword hzd, void (*func)())
             Vmcs::write (Vmcs::TSC_OFFSET_HI, static_cast<mword>(current->regs.tsc_offset >> 32));
         } else
         if (func == ret_user_vmrun) {
+            current->regs.vmcb_state->make_current();
             current->regs.vmcb_state->vmcb.tsc_offset = current->regs.tsc_offset;
         }
     }
@@ -375,11 +362,15 @@ void Ec::ret_user_vmresume()
     if (EXPECT_FALSE (get_cr2() != current->regs.cr2))
         set_cr2 (current->regs.cr2);
 
+    Fpu::State_xsv::make_current (Fpu::hst_xsv, current->regs.gst_xsv);    // Restore XSV guest state
+
     asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR)
                   "vmresume;"
                   "vmlaunch;"
                   "mov %1," EXPAND (PREG(sp);)
                   : : "m" (current->regs), "i" (CPU_LOCAL_STCK + PAGE_SIZE) : "memory");
+
+    Fpu::State_xsv::make_current (current->regs.gst_xsv, Fpu::hst_xsv);    // Restore XSV host state
 
     trace (0, "VM entry failed with error %#lx", Vmcs::read (Vmcs::VMX_INST_ERROR));
 
@@ -392,6 +383,8 @@ void Ec::ret_user_vmrun()
     if (EXPECT_FALSE (hzd))
         handle_hazard (hzd, ret_user_vmrun);
 
+    current->regs.vmcb_state->make_current();
+
     if (EXPECT_FALSE (Pd::current->gtlb.chk (Cpu::id))) {
         Pd::current->gtlb.clr (Cpu::id);
         if (current->regs.nst_on)
@@ -399,6 +392,8 @@ void Ec::ret_user_vmrun()
         else
             current->regs.vtlb->flush (true);
     }
+
+    Fpu::State_xsv::make_current (Fpu::hst_xsv, current->regs.gst_xsv);    // Restore XSV guest state
 
     asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR)
                   "clgi;"
@@ -428,7 +423,15 @@ void Ec::idle()
         Sc::setup_rrq_mon(Cpu::id);
 
         uint64 t1 = rdtsc();
-        asm volatile("sti; mwait; cli" ::"a"(0), "c"(0) : "memory");
+
+        Cpu::halt_or_mwait([&]() {
+            asm volatile ("sti; hlt; cli" : : : "memory");
+        }, [&](auto const cstate_hint) {
+            mword volatile dummy = 0;
+            setup_rrq_mon(Cpu::id);
+            asm volatile("sti; mwait; cli;" ::"a"(cstate_hint), "c"(0) : "memory");
+        });
+
         uint64 t2 = rdtsc();
 
         if (!(Sc::remote(Cpu::id)->queue))
@@ -492,6 +495,12 @@ void Ec::root_invoke()
     auth_suspend->add_ref();
     Space_obj::insert_root (Pd::kern.quota, auth_suspend);
 
+    /* capability for MSR user access */
+    auto msr_cap = new (Pd::root) Sm (&Pd::root, SM_MSR_ACCESS);
+    Msr::msr_cap = msr_cap;
+    Space_obj::insert_root (Pd::kern.quota, Msr::msr_cap);
+    msr_cap->add_ref();
+
     /* adjust root quota used by Pd::kern during bootstrap */
     Quota::boot(Pd::kern.quota, Pd::root.quota);
 
@@ -507,11 +516,6 @@ void Ec::root_invoke()
     /* check PCID handling */
     assert (Pd::kern.did == 0);
     assert (Pd::root.did == 1);
-
-    if (!Cmdline::fpu_lazy) {
-        Ec::current->transfer_fpu(Ec::current);
-        Cpu::hazard &= ~HZD_FPU;
-    }
 
     ret_user_sysexit();
 }
@@ -534,22 +538,56 @@ bool Ec::fixup (mword &eip)
 
 void Ec::die (char const *reason, Exc_regs *r)
 {
-    bool const show = current->pd == &Pd::kern || current->pd == &Pd::root;
+    bool const root_pd = current->pd == &Pd::root;
+    bool const kern_pd = current->pd == &Pd::kern;
+    bool const show    = kern_pd || root_pd ||
+                         (reason && strmatch(reason, "EXC", 3));
 
-    if (current->utcb || show) {
-        if (show || !strmatch(reason, "PT not found", 12))
-        trace (0, "Killed EC:%p SC:%p V:%#lx CS:%#lx IP:%#lx(%#lx) CR2:%#lx ERR:%#lx (%s) %s",
-               current, Sc::current, r->vec, r->cs, r->REG(ip), r->ARG_IP, r->cr2, r->err, reason, current->pd == &Pd::root ? "Pd::root" : current->pd == &Pd::kern ? "Pd::kern" : "");
-    } else
-        trace (0, "Killed EC:%p SC:%p V:%#lx CR0:%#lx CR3:%#lx CR4:%#lx (%s)",
-               current, Sc::current, r->vec, r->cr0_shadow, r->cr3_shadow, r->cr4_shadow, reason);
+    if (!current->vcpu() || show) {
+        bool const pt_err = reason && strmatch(reason, "PT not found", 12);
+        if (show || (!pt_err && !Sc::current->disable)) {
+            trace (0, "%sKilled EC:%p SC:%p%s V:%#lx CS:%#lx IP:%#lx(%#lx) CR2:%#lx ERR:%#lx CONT:%p (%s)%s",
+                   root_pd ? "Pd::root " : (kern_pd ? "Pd::kern " : ""),
+                   current, Sc::current, Sc::current->disable ? "_d" : "",
+                   r->vec, r->cs, r->REG(ip), r->ARG_IP,
+                   r->cr2, r->err, current->cont, reason,
+                   r->user() ? "" : " - fault kernel");
+        }
+    }
+
+    if (current->vcpu() && !show) {
+        if (current->cont != dead && !Sc::current->disable)
+            trace (0, "vCPU Killed EC:%p SC:%p%s V:%#lx CR0:%#lx CR3:%#lx CR4:%#lx CONT=%p (%s)",
+                   current, Sc::current, Sc::current->disable ? "_d" : "",
+                   r->vec, r->cr0_shadow, r->cr3_shadow,
+                   r->cr4_shadow, current->cont, reason);
+    }
 
     Ec *ec = current->rcap;
 
     if (ec)
-        ec->cont = ec->cont == ret_user_sysexit ? static_cast<void (*)()>(sys_finish<Sys_regs::COM_ABT>) : dead;
+        ec->cont = (ec->cont == ret_user_sysexit || ec->cont == xcpu_return)
+                 ? static_cast<void (*)()>(sys_finish<Sys_regs::COM_ABT>)
+                 : dead;
 
     reply (dead);
+}
+
+void Ec::xcpu_clone(Ec & from, uint16 const tcpu)
+{
+    cont = Ec::sys_call;
+    cpu  = tcpu;
+
+    regs            = from.regs;
+    regs.vtlb       = nullptr;
+    regs.vmcs_state = nullptr;
+    regs.vmcb_state = nullptr;
+
+    utcb    =  from.utcb;
+    xcpu_sm =  from.xcpu_sm;
+
+    // Make sure we have a PTAB for this CPU in the PD
+    from.pd->Space_mem::init (from.pd->quota, cpu);
 }
 
 void Ec::xcpu_return()
@@ -559,26 +597,37 @@ void Ec::xcpu_return()
     assert (current->utcb);
     assert (Sc::current->ec == current);
 
-    *current->rcap->exc_regs() = current->regs;
-    current->rcap->regs.mtd = current->regs.mtd;
+    current->xcpu_revert(ret_xcpu_reply);
 
-    current->xcpu_sm->up (ret_xcpu_reply);
-
-    current->rcap    = nullptr;
-    current->utcb    = nullptr;
-    current->fpu     = nullptr;
-    current->xcpu_sm = nullptr;
-
-    Rcu::call(current);
-    Rcu::call(Sc::current);
+    /* if last ref it will be handled by schedule(true) */
+    Sc::current->del_rcu();
 
     Sc::schedule(true);
+}
+
+void Ec::xcpu_revert(void (*sm_cont)())
+{
+    if (rcap) {
+        *rcap->exc_regs() = regs;
+         rcap->regs.mtd   = regs.mtd;
+
+        if (rcap->fpu == fpu)
+            fpu = nullptr;
+    }
+
+    auto sm = xcpu_sm;
+
+    utcb    = nullptr;
+    xcpu_sm = nullptr;
+    cont    = dead;
+
+    sm->up (sm_cont);
 }
 
 void Ec::idl_handler()
 {
     if (Ec::current->cont == Ec::idle)
-        Rcu::update();
+        Rcu::update(false);
 }
 
 void Ec::hlt_prepare()
@@ -602,4 +651,33 @@ void Ec::hlt_handler()
 {
     hlt_prepare();
     shutdown();
+}
+
+void Ec::flush_from_cpu()
+{
+    if (Sc::current->cpu != cpu)
+        return;
+
+    if (fpowner == this) {
+
+        fpowner->del_ref();
+
+        fpowner = nullptr;
+
+        if (Cmdline::fpu_lazy) {
+            assert (!(Cpu::hazard & HZD_FPU));
+            Fpu::disable();
+            assert (!(Cpu::hazard & HZD_FPU));
+        }
+    }
+
+    if (!vcpu())
+        return;
+
+    /* flush on right CPU, because of CPU local queues and Vmcs::current */
+    if ((Hip::feature() & Hip::FEAT_VMX) && regs.vmcs_state)
+        regs.vmcs_state->clear();
+    else
+    if ((Hip::feature() & Hip::FEAT_SVM) && regs.vmcb_state)
+        regs.vmcb_state->clear();
 }

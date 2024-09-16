@@ -166,6 +166,8 @@ void Ec::svm_cr(mword const reason)
 
 void Ec::handle_svm()
 {
+    Fpu::State_xsv::make_current (current->regs.gst_xsv, Fpu::hst_xsv);    // Restore XSV host state
+
     Vmcb &vmcb = current->regs.vmcb_state->vmcb;
 
     vmcb.tlb_control = 0;
@@ -209,6 +211,8 @@ void Ec::handle_svm()
 
         case 0x60:              // EXTINT
             asm volatile ("sti; nop; cli" : : : "memory");
+            /* Set a default value in case there is an asynchronous recall. */
+            current->regs.dst_portal = VM_EXIT_RECALL;
             ret_user_vmrun();
 
         case 0x79:              // INVLPG

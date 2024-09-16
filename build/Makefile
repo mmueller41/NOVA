@@ -87,7 +87,7 @@ WFLAGS		+= $(call check,-Wzero-as-null-pointer-constant)
 
 # Compiler flags
 SFLAGS		:= $(PFLAGS) $(DFLAGS) $(AFLAGS)
-CFLAGS		:= $(PFLAGS) $(DFLAGS) $(AFLAGS) $(OFLAGS) $(FFLAGS) $(WFLAGS)
+CFLAGS		:= $(PFLAGS) $(DFLAGS) $(AFLAGS) $(OFLAGS) $(FFLAGS) $(WFLAGS) -std=gnu++23
 
 # Linker flags
 LFLAGS		:= --defsym=GIT_VER=0x$(call gitrv) --gc-sections --warn-common -static -n -T

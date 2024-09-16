@@ -117,6 +117,10 @@ void Acpi::init()
 {
     if (fadt)
         static_cast<Acpi_table_fadt *>(Hpt::remap (Pd::kern.quota, fadt))->init();
+    if (dmar)
+        static_cast<Acpi_table_dmar *>(Hpt::remap (Pd::kern.quota, dmar))->init();
+    if (ivrs)
+        static_cast<Acpi_table_ivrs *>(Hpt::remap (Pd::kern.quota, ivrs))->init();
 
     if (Acpi_table_madt::pic_present)
         Pic::init();
@@ -255,6 +259,9 @@ bool Acpi::suspend(uint8 const sleep_type_a, uint8 const sleep_type_b)
 
     Ec::hlt_prepare();
 
+    /* on resume the BSP also use the AP startup code */
+    Lapic::ap_code_prepare();
+
     auto &vector = *static_cast<Acpi_table_facs *>(Hpt::remap (Pd::kern.quota, facs));
     vector.firmware_waking_vector   = static_cast<uint32>(AP_BOOT_PADDR);
     vector.x_firmware_waking_vector = 0;
@@ -273,9 +280,12 @@ bool Acpi::suspend(uint8 const sleep_type_a, uint8 const sleep_type_b)
     hw_write (&pm1a_cnt, cnt | pm1a | PM1_CNT_SLP_EN);
     hw_write (&pm1b_cnt, cnt | pm1b | PM1_CNT_SLP_EN);
 
-    /* in S1 case wake up bit will be set, other S* use assembly entry */
-    while ( not (Acpi::read(PM1_STS) & PM1_STS_WAKE)) {
-        pause();
+    if (!Lapic::pause_loop_until(5000, [&] {
+        /* in S1 case wake up bit will be set, other S* use assembly entry */
+        return (not (Acpi::read(PM1_STS) & PM1_STS_WAKE));
+    })) {
+        Console::enable_all();
+        Console::print("timeout - ACPI suspend\n");
     }
 
     bootstrap();

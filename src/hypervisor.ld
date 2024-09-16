@@ -33,23 +33,17 @@ PHDRS
 {
     init    PT_LOAD;
     kern    PT_LOAD;
-    reserve PT_LOAD FLAGS(7);
 }
 
 SECTIONS
 {
-    .cpu_ap AP_BOOT_PADDR :
-    {
-    . += 4K;
-    } : reserve
-
     .init LOAD_ADDR :
     {
         *(.init)
         *(.initdata)
     } : init = 0x90909090
 
-    . = ALIGN(4K) + 8K; PROVIDE (STACK = .);
+    . = ALIGN(8K) + 8K; PROVIDE (STACK = .);
 
     PROVIDE (LOAD_E = .);
     OFFSET = LINK_ADDR - ALIGN (16M);

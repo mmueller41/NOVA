@@ -25,7 +25,6 @@
 #include "pci.hpp"
 #include "pd.hpp"
 #include "stdio.hpp"
-#include "vectors.hpp"
 
 INIT_PRIORITY (PRIO_SLAB)
 Slab_cache  Dmar::cache (sizeof (Dmar), 8);
@@ -56,25 +55,7 @@ Dmar::Dmar (Paddr p) : List<Dmar> (list), reg_base ((hwdev_addr -= PAGE_SIZE) | 
     if (cm())
         Dpt::force_flush = true;
 
-    write<uint32>(REG_FEADDR, 0xfee00000 | Cpu::apic_id[0] << 12);
-    write<uint32>(REG_FEDATA, VEC_MSI_DMAR);
-    write<uint32>(REG_FECTL,  0);
-
-    write<uint64>(REG_RTADDR, Buddy::ptr_to_phys (ctx));
-    command (GCMD_SRTP);
-
-    if (ir()) {
-        write<uint64>(REG_IRTA, Buddy::ptr_to_phys (irt) | 7);
-        command (GCMD_SIRTP);
-        gcmd |= GCMD_IRE;
-    }
-
-    if (qi()) {
-        write<uint64>(REG_IQT, 0);
-        write<uint64>(REG_IQA, Buddy::ptr_to_phys (invq));
-        command (GCMD_QIE);
-        gcmd |= GCMD_QIE;
-    }
+    init();
 }
 
 void Dmar::assign (uint16 rid, Pd *p)
@@ -91,12 +72,9 @@ void Dmar::assign (uint16 rid, Pd *p)
         r->set (0, Buddy::ptr_to_phys (new (p->quota) Dmar_ctx) | 1);
 
     Dmar_ctx *c = static_cast<Dmar_ctx *>(Buddy::phys_to_ptr (r->addr())) + (rid & 0xff);
-    if (c->present())
-        c->set (0, 0);
+    c->set (lev | (p->dom_id << 8), p->dpt.root (p->quota, lev + 1) | 1);
 
     flush_ctx();
-
-    c->set (lev | p->dom_id << 8, p->dpt.root (p->quota, lev + 1) | 1);
 
     p->assign_rid(rid);
 

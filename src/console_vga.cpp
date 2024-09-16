@@ -26,7 +26,7 @@ INIT_PRIORITY (PRIO_CONSOLE) Console_vga Console_vga::con;
 
 Console_vga::Console_vga() : num (25), row (0), col (0)
 {
-    if (Cmdline::novga)
+    if (!Cmdline::vga)
         return;
 
     Pd::kern.Space_mem::insert (Pd::kern.quota, HV_GLOBAL_FBUF, 0, Hpt::HPT_NX | Hpt::HPT_G | Hpt::HPT_UC | Hpt::HPT_W | Hpt::HPT_P, 0xb9000);
@@ -38,7 +38,7 @@ Console_vga::Console_vga() : num (25), row (0), col (0)
 
 void Console_vga::setup()
 {
-    if (Cmdline::novga || !Cmdline::spinner)
+    if (!Cmdline::vga || !Cmdline::spinner)
         return;
 
     for (unsigned c = 0; c < min (Cpu::online, 12U); c++) {

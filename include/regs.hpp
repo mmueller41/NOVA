@@ -25,6 +25,7 @@
 #include "atomic.hpp"
 #include "hazards.hpp"
 #include "types.hpp"
+#include "fpu.hpp"
 
 class Vmcb_state;
 class Vmcs_state;
@@ -102,6 +103,7 @@ class Sys_regs
 class Exc_regs : public Sys_regs
 {
     public:
+
         union {
             struct {
                 mword   gs;
@@ -117,11 +119,8 @@ class Exc_regs : public Sys_regs
                 mword   ss;
             };
             struct {
-                union {
-                    Vmcs_state *  vmcs_state;
-                    Vmcb_state *  vmcb_state;
-                };
-                Vtlb *  vtlb;
+                mword   res0;
+                mword   res1;
                 mword   cr0_shadow;
                 mword   cr3_shadow;
                 mword   cr4_shadow;
@@ -133,7 +132,16 @@ class Exc_regs : public Sys_regs
             };
         };
 
+    public:
+
+        ALWAYS_INLINE
+        inline bool user() const { return cs & 3; }
+};
+
+class Cpu_regs : public Exc_regs
+{
     private:
+
         enum Mode
         {
             MODE_REAL       = 0,
@@ -143,7 +151,37 @@ class Exc_regs : public Sys_regs
             MODE_PROT_64    = 8,
         };
 
-        template <typename T> ALWAYS_INLINE inline Mode mode() const;
+        mword hzd { };
+
+    public:
+
+        union {
+            Vmcs_state *  vmcs_state;
+            Vmcb_state *  vmcb_state;
+        };
+        Vtlb *  vtlb { };
+
+        uint64  tsc_offset { };
+        uint64  tsc_aux    { };
+        mword   mtd        { };
+
+        Fpu::State_xsv gst_xsv { };
+
+        ALWAYS_INLINE
+        inline mword hazard() const { return hzd; }
+
+        ALWAYS_INLINE
+        inline void set_hazard (mword h) { Atomic::set_mask (hzd, h); }
+
+        ALWAYS_INLINE
+        inline void clr_hazard (mword h) { Atomic::clr_mask (hzd, h); }
+
+        ALWAYS_INLINE
+        inline void add_tsc_offset (uint64 tsc)
+        {
+            tsc_offset += tsc;
+            set_hazard (HZD_TSC);
+        }
 
         template <typename T> ALWAYS_INLINE inline mword get_g_cs_dl() const;
         template <typename T> ALWAYS_INLINE inline mword get_g_flags() const;
@@ -163,6 +201,11 @@ class Exc_regs : public Sys_regs
         template <typename T> ALWAYS_INLINE inline void set_s_cr0 (mword);
         template <typename T> ALWAYS_INLINE inline void set_s_cr4 (mword);
 
+        template <typename T> ALWAYS_INLINE inline Mode mode() const;
+
+        template <typename T> void tlb_flush (bool) const;
+        template <typename T> void tlb_flush (mword) const;
+
         template <typename T> ALWAYS_INLINE inline mword cr0_set() const;
         template <typename T> ALWAYS_INLINE inline mword cr0_msk() const;
         template <typename T> ALWAYS_INLINE inline mword cr4_set() const;
@@ -177,10 +220,6 @@ class Exc_regs : public Sys_regs
         template <typename T> ALWAYS_INLINE inline void set_cr4 (mword);
 
         template <typename T> ALWAYS_INLINE inline void set_exc() const;
-
-    public:
-        ALWAYS_INLINE
-        inline bool user() const { return cs & 3; }
 
         void fpu_ctrl (bool);
 
@@ -199,40 +238,10 @@ class Exc_regs : public Sys_regs
 
         template <typename T> void nst_ctrl (bool = T::has_urg());
 
-        template <typename T> void tlb_flush (bool) const;
-        template <typename T> void tlb_flush (mword) const;
-
         template <typename T> mword read_cr (unsigned) const;
         template <typename T> void write_cr (unsigned, mword);
 
         template <typename T> void write_efer (mword);
 
         template <typename T> mword linear_address (mword) const;
-};
-
-class Cpu_regs : public Exc_regs
-{
-    private:
-        mword   hzd;
-
-    public:
-        uint64  tsc_offset;
-        uint64  tsc_aux;
-        mword   mtd;
-
-        ALWAYS_INLINE
-        inline mword hazard() const { return hzd; }
-
-        ALWAYS_INLINE
-        inline void set_hazard (mword h) { Atomic::set_mask (hzd, h); }
-
-        ALWAYS_INLINE
-        inline void clr_hazard (mword h) { Atomic::clr_mask (hzd, h); }
-
-        ALWAYS_INLINE
-        inline void add_tsc_offset (uint64 tsc)
-        {
-            tsc_offset += tsc;
-            set_hazard (HZD_TSC);
-        }
 };

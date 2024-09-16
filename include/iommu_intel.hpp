@@ -24,6 +24,7 @@
 #include "slab.hpp"
 #include "x86.hpp"
 #include "iommu.hpp"
+#include "vectors.hpp"
 
 class Pd;
 
@@ -261,6 +262,31 @@ class Dmar : public Iommu::Interface, public List<Dmar>
 
         void fault_handler();
 
+
+        ALWAYS_INLINE
+        inline void init()
+        {
+            write<uint32>(REG_FEADDR, 0xfee00000 | Cpu::apic_id[0] << 12);
+            write<uint32>(REG_FEDATA, VEC_MSI_DMAR);
+            write<uint32>(REG_FECTL,  0);
+
+            write<uint64>(REG_RTADDR, Buddy::ptr_to_phys (ctx));
+            command (GCMD_SRTP);
+
+            if (ir()) {
+                write<uint64>(REG_IRTA, Buddy::ptr_to_phys (irt) | 7);
+                command (GCMD_SIRTP);
+                gcmd |= GCMD_IRE;
+            }
+
+            if (qi()) {
+                write<uint64>(REG_IQT, 0);
+                write<uint64>(REG_IQA, Buddy::ptr_to_phys (invq));
+                command (GCMD_QIE);
+                gcmd |= GCMD_QIE;
+            }
+        }
+
     public:
         INIT
         Dmar (Paddr);
@@ -274,8 +300,13 @@ class Dmar : public Iommu::Interface, public List<Dmar>
             if (!(flags & 1))
                 gcmd &= ~GCMD_IRE;
 
-            for (Dmar *dmar = list; dmar; dmar = dmar->next)
-                if (!dmar->invalid()) dmar->command (gcmd);
+            for (Dmar *dmar = list; dmar; dmar = dmar->next) {
+                if (dmar->invalid())
+                    return;
+
+                dmar->init();
+                dmar->command (gcmd);
+            }
         }
 
         ALWAYS_INLINE

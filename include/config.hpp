@@ -21,7 +21,7 @@
 
 #pragma once
 
-#define CFG_VER         8
+#define CFG_VER         10
 
 #define NUM_CPU         64
 #define NUM_IRQ         16
@@ -31,6 +31,7 @@
 #define EC_ROOTTASK     NUM_EXC + 1
 #define SC_ROOTTASK     NUM_EXC + 2
 #define SM_ACPI_SUSPEND NUM_EXC + 3
+#define SM_MSR_ACCESS   NUM_EXC + 4
 #define NUM_VMI         256
 #define NUM_GSI         192
 #define NUM_LVT         6
@@ -51,3 +52,6 @@
 #define VM_EXIT_INVSTATE (NUM_VMI - 3)
 #define VM_EXIT_NPT      (NUM_VMI - 4)
 #define VM_EXIT_NOSUPP   (NUM_VMI - 5)
+
+#define HELPING_LOOP_TOO_LONG_CHECK        100
+#define HELPING_LOOP_LIMIT_RATE_MESSAGE_MS 10'000

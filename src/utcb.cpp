@@ -237,6 +237,11 @@ bool Utcb::load_vmx (Cpu_regs *regs)
     if (m & Mtd::TSC_AUX)
         tsc_aux = regs->tsc_aux;
 
+    if (m & Mtd::XSAVE) {
+        xcr0 = regs->gst_xsv.xcr;
+        xss  = regs->gst_xsv.xss;
+    }
+
 #ifdef __x86_64__
     if (m & Mtd::EFER)
         efer = Vmcs::read (Vmcs::GUEST_EFER);
@@ -266,6 +271,8 @@ bool Utcb::load_vmx (Cpu_regs *regs)
         pdpte[2] = Vmcs::read (Vmcs::GUEST_PDPTE2);
         pdpte[3] = Vmcs::read (Vmcs::GUEST_PDPTE3);
     }
+
+    exit_value = regs->dst_portal;
 
     barrier();
     mtd = m;
@@ -421,6 +428,11 @@ bool Utcb::save_vmx (Cpu_regs *regs)
     if (mtd & Mtd::TSC)
         regs->add_tsc_offset (tsc_off);
 
+    if (mtd & Mtd::XSAVE) {
+        regs->gst_xsv.xcr = Fpu::State_xsv::constrain_xcr (xcr0);
+        regs->gst_xsv.xss = Fpu::State_xsv::constrain_xss (xss);
+    }
+
 #ifdef __x86_64__
     if (mtd & Mtd::EFER)
         regs->write_efer<Vmcs> (efer);
@@ -462,6 +474,8 @@ bool Utcb::save_vmx (Cpu_regs *regs)
     if (mtd & Mtd::TSC_AUX)
         regs->tsc_aux = tsc_aux;
 
+    regs->dst_portal = VM_EXIT_RECALL;
+
     return mtd & Mtd::FPU;
 }
 
@@ -496,6 +510,8 @@ bool Utcb::load_svm (Cpu_regs *regs)
         r15 = regs->r15;
     }
 #endif
+
+    regs->vmcb_state->make_current();
 
     if (m & Mtd::RSP)
         rsp = static_cast<mword>(vmcb->rsp);
@@ -579,6 +595,11 @@ bool Utcb::load_svm (Cpu_regs *regs)
     if (m & Mtd::TSC_AUX)
         tsc_aux = regs->tsc_aux;
 
+    if (m & Mtd::XSAVE) {
+        xcr0 = regs->gst_xsv.xcr;
+        xss  = regs->gst_xsv.xss;
+    }
+
 #ifdef __x86_64__
     if (m & Mtd::EFER)
         efer = vmcb->efer;
@@ -591,6 +612,8 @@ bool Utcb::load_svm (Cpu_regs *regs)
         kernel_gs_base = vmcb->kernel_gs_base;
     }
 #endif
+
+    exit_value = regs->dst_portal;
 
     barrier();
     mtd = m;
@@ -628,6 +651,8 @@ bool Utcb::save_svm (Cpu_regs *regs)
         regs->r15     = r15;
     }
 #endif
+
+    regs->vmcb_state->make_current();
 
     if (mtd & Mtd::RSP)
         vmcb->rsp = rsp;
@@ -708,6 +733,11 @@ bool Utcb::save_svm (Cpu_regs *regs)
     if (mtd & Mtd::TSC_AUX)
         regs->tsc_aux = tsc_aux;
 
+    if (mtd & Mtd::XSAVE) {
+        regs->gst_xsv.xcr = Fpu::State_xsv::constrain_xcr (xcr0);
+        regs->gst_xsv.xss = Fpu::State_xsv::constrain_xss (xss);
+    }
+
 #ifdef __x86_64__
     if (mtd & Mtd::EFER)
         regs->write_efer<Vmcb> (efer);
@@ -720,6 +750,8 @@ bool Utcb::save_svm (Cpu_regs *regs)
         vmcb->kernel_gs_base = kernel_gs_base;
     }
 #endif
+
+    regs->dst_portal = VM_EXIT_RECALL;
 
     return mtd & Mtd::FPU;
 }

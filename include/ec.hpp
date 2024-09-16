@@ -6,7 +6,7 @@
  *
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
  * Copyright (C) 2014 Udo Steinberg, FireEye, Inc.
- * Copyright (C) 2012-2020 Alexander Boettcher, Genode Labs GmbH.
+ * Copyright (C) 2012-2023 Alexander Boettcher, Genode Labs GmbH.
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -50,33 +50,32 @@ class alignas(64) Ec : public Kobject, public Refcount, public Queue<Sc>
     friend class Pmc;
     friend class Cell;
 
-private:
-    void (*cont)() ALIGNED(16);
-    Cpu_regs regs{};
-    Ec *rcap{nullptr};
-    Utcb *utcb{nullptr};
-    Refptr<Pd> pd;
-    Ec *partner;
-    Ec *prev;
-    Ec *next;
-    Fpu *fpu;
+    private:
+        void        (*cont)() ALIGNED (16);
+        Cpu_regs    regs { };
+        Ec *        rcap { nullptr };
+        Utcb *      utcb { nullptr };
+        Refptr<Pd>  pd;
+        Ec *        partner { };
+        Ec *        prev    { };
+        Ec *        next    { };
+        Fpu *       fpu     { };
+        Ec *        ec_xcpu { };
+        Sc *        sc_xcpu { };
 
-    mword sp{0};
-    union
-    {
-        struct
-        {
-            uint16 cpu;
-            uint16 glb;
-        };
-        uint32 xcpu;
+        union {
+            struct {
+                uint16  cpu;
+                uint16  glb;
+            };
+            uint32  xcpu;
         };
         unsigned const evt;
         Timeout_hypercall timeout;
-        mword          user_utcb;
+        mword          user_utcb { };
 
-        Sm *         xcpu_sm;
-        Pt *         pt_oom;
+        Sm *         xcpu_sm { };
+        Pt *         pt_oom  { };
 
         uint64      tsc  { 0 };
         uint64      time { 0 };
@@ -144,20 +143,18 @@ private:
                 e->user_utcb = 0;
             }
 
-            // XXX If e is on another CPU and there the fpowner - this check will fail.
-            // XXX For now the destruction is delayed until somebody else grabs the FPU.
-            if (fpowner == e) {
-                assert (Sc::current->cpu == e->cpu);
+            e->flush_from_cpu();
 
-                bool zero = fpowner->del_ref();
-                assert (!zero);
+            if (e->ec_xcpu) {
+                auto ec = e->ec_xcpu;
+                e->ec_xcpu = nullptr;
+                Rcu::call(ec);
+            }
 
-                fpowner      = nullptr;
-                if (Cmdline::fpu_lazy) {
-                    assert (!(Cpu::hazard & HZD_FPU));
-                    Fpu::disable();
-                    assert (!(Cpu::hazard & HZD_FPU));
-                }
+            if (e->sc_xcpu) {
+                auto sc = e->sc_xcpu;
+                e->sc_xcpu = nullptr;
+                Rcu::call(sc);
             }
         }
 
@@ -170,11 +167,6 @@ private:
         static void free (Rcu_elem * a)
         {
             Ec * e = static_cast<Ec *>(a);
-
-            if (e->regs.vtlb) {
-                trace(0, "leaking memory - vCPU EC memory re-usage not supported");
-                return;
-            }
 
             if (e->del_ref()) {
                 assert(e != Ec::current);
@@ -204,14 +196,19 @@ private:
         inline unsigned clr_partner()
         {
             assert (partner == current);
+
             if (partner->rcap) {
-                bool last = partner->rcap->del_ref();
-                assert (!last);
+                Ec * ec = partner->rcap;
                 partner->rcap = nullptr;
+                if (ec->del_rcu())
+                    Rcu::call(ec);
             }
-            bool last = partner->del_ref();
-            assert (!last);
+
+            Ec * ec = partner;
             partner = nullptr;
+            if (ec->del_rcu())
+                Rcu::call(ec);
+
             return Sc::ctr_link--;
         }
 
@@ -225,8 +222,13 @@ private:
         void load_fpu();
         void save_fpu();
 
-        void transfer_fpu (Ec *);
+        void import_fpu_data (void *);
+        void export_fpu_data (void *);
+
+        void claim_fpu ();
         void flush_fpu ();
+
+        void flush_from_cpu ();
 
         void transfer_pmcs(Ec *);
         void save_pmcs();
@@ -294,21 +296,7 @@ private:
             if (EXPECT_FALSE (current->del_rcu()))
                 Rcu::call (current);
 
-            if (!Cmdline::fpu_lazy) {
-                if (!idle_ec()) {
-                    if (!current->utcb && !this->utcb)
-                        assert(!(Cpu::hazard & HZD_FPU));
-
-                    transfer_fpu(this);
-                    assert(fpowner == this);
-                }
-
-                Cpu::hazard &= ~HZD_FPU;
-            }
-
-            if (!idle_ec()) {
-                    transfer_pmcs(this);
-            }
+            claim_fpu();
 
             check_hazard_tsc_aux();
 
@@ -343,8 +331,8 @@ private:
             if (!Cpu::feature (Cpu::FEAT_RDTSCP))
                 return;
 
-            bool const current_is_vm = (current->regs.vmcb_state || current->regs.vmcs_state);
-            bool const next_is_vm    = (this->regs.vmcb_state    || this->regs.vmcs_state);
+            bool const current_is_vm = current->vcpu();
+            bool const next_is_vm    = this->vcpu();
 
             if (!current_is_vm && !next_is_vm)
                 return;
@@ -386,8 +374,18 @@ private:
 
             Counter::print<1,16> (++Counter::helping, Console_vga::COLOR_LIGHT_WHITE, SPN_HLP);
 
-            /*if (EXPECT_TRUE ((++Sc::ctr_loop % 100) == 0))
-                Console::print("Long helping chain");*/
+            /* debug helper */
+            if (EXPECT_FALSE ((++Sc::ctr_loop % HELPING_LOOP_TOO_LONG_CHECK) == 0)) {
+                auto now   = Lapic::time();
+                auto after = Lapic::ms_to_tsc(HELPING_LOOP_LIMIT_RATE_MESSAGE_MS, Sc::long_loop);
+
+                /* limit rate of messages according to helping loop define */
+                if (!Sc::long_loop || now > after) {
+                    trace(0, "Sc:%p Ec:%p - long helping chain - %u",
+                             Sc::current, Ec::current, Sc::ctr_loop);
+                    Sc::long_loop = now;
+                }
+            }
 
             activate();
         }
@@ -578,6 +576,10 @@ private:
         NORETURN
         static void xcpu_return();
 
+        void xcpu_revert(void (*)() = nullptr);
+
+        void xcpu_clone(Ec &, uint16);
+
         template <void (*)()>
         NORETURN
         static void oom_xcpu_return();
@@ -624,4 +626,10 @@ private:
 
         ALWAYS_INLINE
         void inline measured() { time_m = time; }
+
+        ALWAYS_INLINE
+        inline bool vcpu()
+        {
+            return !utcb && (regs.vtlb || regs.vmcb_state || regs.vmcs_state);
+        }
 };

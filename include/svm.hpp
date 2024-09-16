@@ -126,13 +126,7 @@ union {
             return Buddy::allocator.alloc (0, quota, Buddy::FILL_0);
         }
 
-        ALWAYS_INLINE
-        static inline void destroy(Vmcb *obj, Quota &quota)
-        {
-            Buddy::allocator.free (reinterpret_cast<mword>(Buddy::phys_to_ptr(static_cast<Paddr>(obj->base_msr))), quota);
-            obj->~Vmcb();
-            Buddy::allocator.free (reinterpret_cast<mword>(obj), quota);
-        }
+        static void destroy(Vmcb &, Quota &);
 
         Vmcb (Quota &quota, mword, mword, unsigned);
 
@@ -170,30 +164,44 @@ class Vmcb_state
 
     private:
 
-        static Slab_cache cache;
-
+        static Slab_cache        cache;
         static Queue<Vmcb_state> queue CPULOCAL;
 
-        Vmcb_state *prev { nullptr }, *next { nullptr };
+        Vmcb_state * prev { };
+        Vmcb_state * next { };
 
-        Vmcb_state(const Vmcb_state&);
-        Vmcb_state &operator = (Vmcb_state const &);
+        uint16 const cpu;
+
+        Vmcb_state              (Vmcb_state const &);
+        Vmcb_state & operator = (Vmcb_state const &);
+
+        bool queued() { return prev || next; }
 
     public:
 
-        Vmcb &vmcb;
+        Vmcb & vmcb;
 
         ALWAYS_INLINE
         static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
 
-        Vmcb_state(Vmcb &v) : vmcb(v)
-        {
-            queue.enqueue(this);
-        }
+        Vmcb_state(Vmcb &v, uint16 cpuid) : cpu(cpuid), vmcb(v) { }
 
         ~Vmcb_state()
         {
-            queue.dequeue(this);
+            if (queued())
+                trace (0, "%s not de-queued", __func__);
+        }
+
+        inline void make_current()
+        {
+            if (Cpu::id == cpu && !queued())
+                queue.enqueue(this);
+        }
+
+        inline void clear()
+        {
+            if (Cpu::id == cpu && queued())
+                queue.dequeue(this);
         }
 
         static void flush_all_vmcb()
@@ -206,7 +214,7 @@ class Vmcb_state
             if (!remove)
                 return;
 
-            Vmcb::destroy(&remove->vmcb, quota);
+            Vmcb::destroy(remove->vmcb, quota);
 
             remove->~Vmcb_state();
             cache.free (remove, quota);

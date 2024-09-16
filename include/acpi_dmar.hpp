@@ -112,4 +112,6 @@ class Acpi_table_dmar : public Acpi_table
 
         INIT
         void parse() const;
+
+        void init() const;
 };
