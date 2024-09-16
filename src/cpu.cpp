@@ -67,8 +67,8 @@ unsigned    Cpu::patch[NUM_CPU];
 unsigned    Cpu::row;
 struct Cpu::idle_flag Cpu::idle[NUM_CPU];
 
-unsigned long Cpu::delta_block[NUM_CPU];
-unsigned long Cpu::delta_return[NUM_CPU];
+uint64 Cpu::delta_block[NUM_CPU];
+uint64 Cpu::delta_return[NUM_CPU];
 
 uint32      Cpu::name[12];
 uint32      Cpu::features[11];

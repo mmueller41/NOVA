@@ -189,6 +189,10 @@ class Cpu
 
         static struct idle_flag idle[NUM_CPU];
 
+        /* Profiling data */
+        static uint64 delta_block[NUM_CPU];
+        static uint64 delta_return[NUM_CPU];
+
         static unsigned id                  CPULOCAL_HOT;
         static unsigned hazard              CPULOCAL_HOT;
         static Vendor   vendor              CPULOCAL;
