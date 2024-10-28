@@ -163,6 +163,8 @@ class Cpu
         static unsigned patch[NUM_CPU];
 
         static struct idle_flag idle[NUM_CPU];
+        static unsigned long delta_block[NUM_CPU];
+        static unsigned long delta_return[NUM_CPU];
 
         static unsigned id                  CPULOCAL_HOT;
         static unsigned hazard              CPULOCAL_HOT;
