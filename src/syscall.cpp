@@ -492,13 +492,13 @@ void Ec::sys_create_ec()
     Pt *pt = cap_pt.obj()->type() == Kobject::PT ? static_cast<Pt *>(cap_pt.obj()) : nullptr;
 
     Ec *ec = new (*pd) Ec (Pd::current, r->sel(), pd, r->flags() & 1 ? static_cast<void (*)()>(send_msg<ret_user_iret>) : nullptr, r->cpu(), r->evt(), r->utcb(), r->esp(), pt);
-    
+    /* 
     if (pd->worker_channels && pd->cell->_workers[r->cpu()]) {
         //core_alloc.reserve(pd->cell, r->cpu());
         trace(TRACE_ERROR, "%s: A worker is already registered for %p at CPU %u", __func__, pd->cell, r->cpu());
         Ec::destroy(ec, *ec->pd);
         sys_finish<Sys_regs::BAD_CPU>();
-    }
+    }*/
 
     if (pd->worker_channels && !pd->cell->_workers[r->cpu()]) {
         pd->cell->_workers[r->cpu()] = ec;
@@ -567,8 +567,8 @@ void Ec::sys_create_sc()
     if (ec->pd->cell && ec->pd->worker_channels) {
         if (ec->pd->cell->_worker_scs[ec->cpu] != nullptr) {
             trace(TRACE_ERROR, "%s: A worker SC has already been created for CPU %d", __func__, ec->cpu);
-            delete sc;
-            sys_finish<Sys_regs::BAD_CPU>();
+            //delete sc;
+            //sys_finish<Sys_regs::SUCCESS>();
         }
         ec->pd->cell->_worker_scs[ec->cpu] = sc;
     }
@@ -998,20 +998,11 @@ void Ec::sys_ec_ctrl()
         {
             Sys_hpc_ctrl *hc = static_cast<Sys_hpc_ctrl *>(current->sys_regs());
             rpc_bench_cores = static_cast<unsigned>(hc->sel());
-            
-            Pmc *pmc = nullptr;
-            //Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu, static_cast<Pmc::Type>(hc->type()));
+
+            Pmc *pmc = Pmc::find(*(current->pd), static_cast<unsigned char>(hc->sel()), current->cpu, static_cast<Pmc::Type>(hc->type()));
 
             if (!pmc)
-            {
-                if (hc->type() >= NUM_CPU) {
-                    r->set_value(Cpu::id);
-                }
-                else
-                    r->set_value(enqueue_delays[hc->type()]);
-                break;
-            }
-                //sys_finish<Sys_regs::BAD_PAR>();
+                sys_finish<Sys_regs::BAD_PAR>();
 
             mword val = pmc->read();
             
