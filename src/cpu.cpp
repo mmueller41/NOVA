@@ -334,7 +334,7 @@ void Cpu::init(bool resume)
     if (cr4 != get_cr4())
         set_cr4 (cr4);
 
-    if (!resume) {
+    {
         Fpu::probe();
 
         /* XSAVE may be disabled by FPU::probe if state is too large */
@@ -355,7 +355,7 @@ void Cpu::init(bool resume)
         Cpu::defeature (Cpu::FEAT_MWAIT_IRQ);
     }
 
-    trace (TRACE_CPU, "CORE:%02x:%02x:%x %x:%x:%x:%x [%x] %s%.48s %s%s%s",
+    trace (TRACE_CPU, "CORE:%02x:%02x:%x %x:%x:%x:%x [%x] %s%.48s %s%s%s%s",
            package[Cpu::id], core[Cpu::id], thread[Cpu::id], family[Cpu::id],
            model[Cpu::id], stepping[Cpu::id], platform[Cpu::id], patch[Cpu::id],
            core_type[Cpu::id] == 0x00 ? ""   :
@@ -364,7 +364,8 @@ void Cpu::init(bool resume)
            reinterpret_cast<char *>(name),
            Cpu::feature (Cpu::FEAT_MONITOR_MWAIT) ? "MWAIT" : "HLT",
            Cpu::feature (Cpu::FEAT_MWAIT_EXT) ? "+E" : "",
-           Cpu::feature (Cpu::FEAT_MWAIT_IRQ) ? "+I" : "");
+           Cpu::feature (Cpu::FEAT_MWAIT_IRQ) ? "+I" : "",
+           cr4 & Cpu::CR4_OSXSAVE ? " X" : "");
 
     if (!resume)
         Hip::add_cpu();
