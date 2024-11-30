@@ -199,10 +199,13 @@ void Sc::rrq_handler()
 
         ptr = ptr->next == ptr ? nullptr : ptr->next;
 
-        if (sc->disable && sc->del_rcu() && !sc->ec->partner && !sc->ec->rcap)
-            Rcu::call(sc);
-        else
-            sc->ready_enqueue (t, false);
+        if (sc->disable && !sc->ec->partner && !sc->ec->rcap) {
+            if (sc->del_rcu())
+                Rcu::call(sc);
+            continue;
+        }
+
+        sc->ready_enqueue (t, false);
     }
 
     rq.queue = nullptr;
